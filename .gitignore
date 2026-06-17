@@ -1,0 +1,5 @@
+node_modules
+.next
+src/data/db.json
+.env*.local
+npm-debug.log*
