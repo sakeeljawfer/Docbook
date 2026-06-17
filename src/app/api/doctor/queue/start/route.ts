@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     }
     queue.status = "running";
     queue.startedAt = queue.startedAt ?? now;
+    queue.endedAt = undefined;
     queue.lastUpdatedAt = now;
     for (const appointment of db.appointments.filter((item) => item.doctorId === doctor.id && item.sessionId === sessionId && item.appointmentDate === today)) {
       if (appointment.status === "confirmed") {

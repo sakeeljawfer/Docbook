@@ -54,10 +54,15 @@ export function recalculateQueue(db: Database, queue: QueueSession) {
   const active = db.appointments
     .filter((item) => item.doctorId === queue.doctorId && item.sessionId === queue.sessionId && item.appointmentDate === queue.appointmentDate)
     .sort((a, b) => a.queuePosition - b.queuePosition);
-  const currentIndex = active.findIndex((item) => item.status === "current");
+  const current = active.find((item) => item.status === "current");
+  const currentPosition = current?.queuePosition ?? 0;
   for (const appointment of active) {
     if (appointment.status === "waiting" || appointment.status === "confirmed") {
-      const before = Math.max(0, appointment.queuePosition - (currentIndex >= 0 ? active[currentIndex].queuePosition : 0) - 1);
+      const before = active.filter((item) =>
+        item.queuePosition < appointment.queuePosition &&
+        item.queuePosition > currentPosition &&
+        (item.status === "waiting" || item.status === "confirmed")
+      ).length;
       appointment.estimatedTime = before * (doctor?.averageConsultationMinutes ?? 10);
       appointment.status = "waiting";
       appointment.updatedAt = new Date().toISOString();

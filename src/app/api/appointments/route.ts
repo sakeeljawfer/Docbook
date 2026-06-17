@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
-import { appointmentView, mutateDb, readDb, notify } from "@/lib/db";
+import { appointmentView, mutateDb, readDb, notify, recalculateQueue } from "@/lib/db";
 import { fail, ok } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +69,52 @@ export async function POST(request: Request) {
       title: "Appointment confirmed",
       message: `Your queue number is ${queueNumber}.`,
       type: "appointment_confirmed"
+    });
+    return appointmentView(db, appointment);
+  }).catch((error: Error) => error);
+
+  if (result instanceof Error) return fail(result.message);
+  return ok({ appointment: result });
+}
+
+export async function PATCH(request: Request) {
+  const user = await getCurrentUser(["patient", "doctor", "admin"]);
+  if (!user) return fail("Unauthorized", 401);
+  const { appointmentId, action } = await request.json();
+  if (!appointmentId || !action) return fail("Appointment and action are required.");
+
+  const result = await mutateDb((db) => {
+    const appointment = db.appointments.find((item) => item.id === appointmentId);
+    if (!appointment) throw new Error("Appointment not found.");
+    const doctor = db.doctorProfiles.find((item) => item.id === appointment.doctorId);
+    const canPatientCancel = user.role === "patient" && appointment.patientId === user.id && ["pending", "confirmed", "waiting"].includes(appointment.status);
+    const canDoctorManage = user.role === "doctor" && doctor?.userId === user.id;
+    if (!canPatientCancel && !canDoctorManage && user.role !== "admin") throw new Error("You cannot change this appointment.");
+
+    const now = new Date().toISOString();
+    if (action === "cancel") appointment.status = "cancelled";
+    else if (action === "complete" && canDoctorManage) appointment.status = "completed";
+    else if (action === "no-show" && canDoctorManage) appointment.status = "no-show";
+    else throw new Error("Unsupported appointment action.");
+    appointment.completedAt = ["completed", "no-show"].includes(appointment.status) ? now : appointment.completedAt;
+    appointment.updatedAt = now;
+
+    const queue = db.queueSessions.find((item) =>
+      item.doctorId === appointment.doctorId &&
+      item.sessionId === appointment.sessionId &&
+      item.appointmentDate === appointment.appointmentDate
+    );
+    if (queue) {
+      if (queue.currentQueueNumber === appointment.queueNumber) queue.currentQueueNumber = undefined;
+      recalculateQueue(db, queue);
+    }
+
+    notify(db, {
+      userId: appointment.patientId,
+      appointmentId: appointment.id,
+      title: action === "cancel" ? "Appointment cancelled" : "Appointment updated",
+      message: `Queue ${appointment.queueNumber} is now ${appointment.status}.`,
+      type: `appointment_${appointment.status}`
     });
     return appointmentView(db, appointment);
   }).catch((error: Error) => error);
