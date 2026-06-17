@@ -3,7 +3,7 @@ import path from "node:path";
 import type { Appointment, Database, Notification, QueueSession } from "./types";
 import { createSeedData } from "./seed";
 
-const dataDir = path.join(process.cwd(), "src", "data");
+const dataDir = process.env.VERCEL ? "/tmp/docbook" : path.join(process.cwd(), "src", "data");
 const dbPath = path.join(dataDir, "db.json");
 
 async function ensureDb() {

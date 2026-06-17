@@ -3,3 +3,4 @@ node_modules
 src/data/db.json
 .env*.local
 npm-debug.log*
+.vercel
