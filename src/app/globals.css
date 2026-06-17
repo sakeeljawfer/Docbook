@@ -58,8 +58,8 @@ p { line-height: 1.55; }
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
   align-items: center;
   width: min(1220px, calc(100% - 24px));
   margin: 12px auto 0;
@@ -70,36 +70,125 @@ p { line-height: 1.55; }
   box-shadow: 0 12px 35px rgba(16, 44, 50, .08);
   backdrop-filter: blur(16px);
 }
+.header-main {
+  display: contents;
+}
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  min-width: 0;
+  width: fit-content;
   border: 0;
   background: transparent;
   color: var(--ink);
+  font-size: 1.08rem;
   font-weight: 950;
 }
-.logo span {
+.logo-mark {
+  position: relative;
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
   border-radius: 8px;
-  background: var(--primary);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.28), rgba(255,255,255,0) 38%),
+    linear-gradient(135deg, #05a89c 0%, #087c75 52%, #244fbe 100%);
   color: white;
+  box-shadow: 0 12px 28px rgba(8, 124, 117, .28);
+  overflow: hidden;
+}
+.logo-mark::before {
+  content: "";
+  position: absolute;
+  inset: 8px 9px 8px 10px;
+  border: 2px solid rgba(255,255,255,.82);
+  border-radius: 5px 7px 7px 5px;
+  transform: skewY(-4deg);
+}
+.logo-book {
+  position: absolute;
+  left: 20px;
+  top: 10px;
+  width: 2px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.72);
+}
+.logo-pulse {
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  top: 24px;
+  height: 2px;
+  background: rgba(255,255,255,.82);
+}
+.logo-pulse::before {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: -5px;
+  width: 14px;
+  height: 12px;
+  border-left: 2px solid rgba(255,255,255,.82);
+  border-top: 2px solid rgba(255,255,255,.82);
+  transform: rotate(45deg);
+}
+.logo-cross {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 5px;
+  background: #ffffff;
+  color: var(--primary-dark);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
 }
 .logo.mini { margin-bottom: 12px; }
-.public-nav, .header-actions {
+.public-nav {
   display: flex;
   gap: 6px;
   align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
+  justify-content: start;
+  grid-column: 1 / -1;
+  overflow-x: auto;
+  padding-top: 2px;
+  scrollbar-width: none;
+}
+.public-nav::-webkit-scrollbar { display: none; }
+.header-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: end;
+  min-width: 0;
 }
 .public-nav button, .header-actions button, .footer button, .link-button {
   border: 0;
   background: transparent;
   color: var(--muted);
+}
+.public-nav button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f5fafb;
+  white-space: nowrap;
+}
+.public-nav button.active {
+  background: var(--soft);
+  color: var(--primary-dark);
+}
+.header-actions button {
+  white-space: nowrap;
 }
 .public-nav .active, .public-nav button:hover, .header-actions button:hover { color: var(--primary-dark); }
 button, .primary {
@@ -192,34 +281,54 @@ button, .primary {
 }
 .queue-preview {
   display: grid;
-  align-content: center;
-  gap: 12px;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: 16px;
   min-height: 460px;
   padding: 24px;
   border-radius: 8px;
   background: #132629;
   color: white;
   box-shadow: var(--shadow);
+  overflow: hidden;
 }
-.queue-preview p {
+.queue-preview-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+.queue-preview-top div {
+  min-width: 0;
+}
+.queue-preview-top p {
   margin-bottom: 0;
   color: white;
-  font-size: 1.35rem;
+  font-size: clamp(1.08rem, 2vw, 1.35rem);
   font-weight: 900;
+  overflow-wrap: anywhere;
 }
-.queue-preview small { color: #b8cbce; font-size: .95rem; }
-.queue-preview label {
-  margin-top: 24px;
+.queue-preview-top small { color: #b8cbce; font-size: .95rem; }
+.queue-preview-current {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  min-height: 180px;
+}
+.queue-preview-current span {
   color: #8fded6;
   font-size: .78rem;
   font-weight: 950;
   letter-spacing: .08em;
   text-transform: uppercase;
 }
-.queue-preview > strong {
+.queue-preview-current strong {
+  display: block;
+  max-width: 100%;
   color: #f8e7ad;
-  font-size: clamp(5rem, 16vw, 10rem);
-  line-height: .86;
+  font-size: clamp(3.6rem, 9vw, 6.4rem);
+  font-weight: 950;
+  line-height: .95;
+  overflow-wrap: anywhere;
 }
 .queue-preview-grid {
   display: grid;
@@ -235,6 +344,15 @@ button, .primary {
   color: #a7bbbe;
 }
 .queue-preview-grid b { color: white; font-size: 1.2rem; }
+.queue-preview > button {
+  width: 100%;
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color: white;
+}
+.queue-preview > button:hover {
+  background: rgba(255,255,255,.14);
+}
 .core-actions {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -714,8 +832,9 @@ legend {
 .mobile-bottom-nav { display: none; }
 
 @media (max-width: 1020px) {
-  .site-header { grid-template-columns: 1fr; }
-  .public-nav, .header-actions { justify-content: start; }
+  .site-header { grid-template-columns: minmax(0, 1fr) auto; }
+  .public-nav { justify-content: start; }
+  .header-actions { justify-content: end; }
   .clinic-hero, .hero, .profile-layout, .auth-layout, .doctor-command { grid-template-columns: 1fr; }
   .feature-grid, .doctor-grid, .dashboard-cards, .metric-row { grid-template-columns: repeat(2, 1fr); }
   .patient-steps, .core-actions { grid-template-columns: repeat(2, 1fr); }
@@ -735,21 +854,82 @@ legend {
 @media (max-width: 720px) {
   main { padding: 12px 12px 82px; }
   .site-header {
-    position: static;
+    position: sticky;
+    top: 8px;
     width: calc(100% - 24px);
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 8px;
+  }
+  .header-main {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+  }
+  .logo {
+    font-size: .98rem;
+    gap: 8px;
+  }
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .logo-mark::before {
+    inset: 7px 8px 7px 9px;
+  }
+  .logo-book {
+    left: 17px;
+    top: 9px;
+    height: 19px;
+  }
+  .logo-pulse {
+    left: 8px;
+    right: 8px;
+    top: 21px;
+  }
+  .logo-cross {
+    top: 4px;
+    right: 5px;
+    width: 13px;
+    height: 13px;
+    font-size: 11px;
+  }
+  .header-actions {
+    flex: 0 0 auto;
+  }
+  .header-actions button {
+    min-height: 36px;
+    padding: 8px 10px;
+    font-size: .84rem;
+  }
+  .public-nav {
+    margin-inline: -2px;
+    padding: 2px 2px 0;
+  }
+  .public-nav button {
+    min-height: 38px;
+    font-size: .86rem;
   }
   h1 { font-size: clamp(2rem, 11vw, 3.2rem); }
-  .public-nav {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .header-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .hero-copy, .auth-copy { padding: 20px; }
   .hero-search, .filter-bar, .feature-grid, .doctor-grid, .split-section, .dashboard-cards, .metric-row, .session-list, .booking-summary, fieldset, .doctor-actions, .admin-actions, .queue-screen-grid, .patient-steps, .core-actions, .queue-preview-grid {
     grid-template-columns: 1fr;
   }
   .clinic-hero { padding-top: 12px; }
   .patient-panel, .queue-preview { min-height: auto; }
+  .queue-preview {
+    grid-template-rows: auto auto auto auto;
+  }
+  .queue-preview-current {
+    min-height: 130px;
+    justify-items: center;
+    text-align: center;
+  }
+  .queue-preview-top {
+    grid-template-columns: 1fr;
+  }
   .doctor-card-head { grid-template-columns: auto minmax(0, 1fr); }
   .doctor-card-head .status { grid-column: 1 / -1; }
   .card-actions { display: grid; }
@@ -790,6 +970,15 @@ legend {
 }
 
 @media (max-width: 420px) {
-  .header-actions, .public-nav { grid-template-columns: 1fr; }
+  .site-header {
+    width: calc(100% - 16px);
+    margin-top: 8px;
+  }
+  .logo {
+    max-width: 150px;
+  }
+  .header-actions button {
+    padding-inline: 9px;
+  }
   .timeline { grid-template-columns: repeat(2, 1fr); }
 }

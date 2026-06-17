@@ -20,7 +20,7 @@ export function createSeedData(): Database {
     { id: "loc_03", city: "Galle", district: "Galle", province: "Southern" }
   ];
   const users = [
-    { id: "admin_01", role: "admin" as const, name: "Super Admin", phone: "0770000000", email: "admin@mediqueue.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
+    { id: "admin_01", role: "admin" as const, name: "Super Admin", phone: "0770000000", email: "admin@docbook.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
     { id: "doctor_user_01", role: "doctor" as const, name: "Dr. Amara Perera", phone: "0771000001", email: "amara@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
     { id: "doctor_user_02", role: "doctor" as const, name: "Dr. Nimal Silva", phone: "0771000002", email: "nimal@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
     { id: "doctor_user_03", role: "doctor" as const, name: "Dr. Farah Khan", phone: "0771000003", email: "farah@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },

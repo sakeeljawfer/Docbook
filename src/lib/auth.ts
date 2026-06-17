@@ -4,7 +4,7 @@ import type { Role, User } from "./types";
 import { readDb } from "./db";
 
 const secret = new TextEncoder().encode(process.env.AUTH_SECRET ?? "local-dev-secret-change-me");
-const cookieName = "mediqueue_session";
+const cookieName = "docbook_session";
 
 export async function signSession(user: User) {
   return new SignJWT({ role: user.role, phone: user.phone })
