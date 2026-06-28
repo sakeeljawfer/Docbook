@@ -300,10 +300,10 @@ export default function MediQueueApp({ portal = "all" }: { portal?: Portal }) {
         {view === "book" && selectedDoctor && <BookingFlow doctor={selectedDoctor} onBook={book} user={user} setView={setView} />}
         {view === "queue" && <PublicQueue board={board} />}
         {view === "about" && <InfoPage title="About DocBook" text="DocBook helps local dispensaries reduce waiting room crowding while giving patients a simple way to book, receive queue numbers, and track their turn." />}
-        {view === "contact" && <InfoPage title="Contact" text="For clinic onboarding, support, and partnerships, contact hello@docbook.test or call 077 000 0000." />}
-        {view === "patient-login" && <LoginPage role="patient" heading="Login to track your appointments" defaultPhone="0772000001" onSubmit={(event) => handleLogin(event, "patient-dashboard")} setView={setView} />}
-        {view === "doctor-login" && <LoginPage role="doctor" heading="Doctor / Dispensary Login" defaultPhone="0771000001" onSubmit={(event) => handleLogin(event, "doctor-dashboard")} setView={setView} />}
-        {view === "admin-login" && <LoginPage role="admin" heading="Admin Login" defaultPhone="0770000000" onSubmit={(event) => handleLogin(event, "admin-dashboard")} setView={setView} />}
+        {view === "contact" && <InfoPage title="Contact" text="For clinic onboarding, support, and partnerships, use your configured support email and phone number." />}
+        {view === "patient-login" && <LoginPage role="patient" heading="Login to track your appointments" onSubmit={(event) => handleLogin(event, "patient-dashboard")} setView={setView} />}
+        {view === "doctor-login" && <LoginPage role="doctor" heading="Doctor / Dispensary Login" onSubmit={(event) => handleLogin(event, "doctor-dashboard")} setView={setView} />}
+        {view === "admin-login" && <LoginPage role="admin" heading="Admin Login" onSubmit={(event) => handleLogin(event, "admin-dashboard")} setView={setView} />}
         {view === "patient-register" && <PatientRegister onSubmit={(event) => handleRegister(event, "patient")} setView={setView} />}
         {view === "doctor-register" && <DoctorRegister onSubmit={(event) => handleRegister(event, "doctor")} setView={setView} />}
         {view === "forgot" && <InfoPage title="Forgot password" text="Password reset is prepared for future SMS/email integration. Please contact the clinic administrator for this MVP." />}
@@ -669,7 +669,7 @@ function BookingFlow({ doctor, onBook, user, setView }: { doctor: Doctor; onBook
   );
 }
 
-function LoginPage({ role, heading, defaultPhone, onSubmit, setView }: { role: "patient" | "doctor" | "admin"; heading: string; defaultPhone: string; onSubmit: (event: FormEvent<HTMLFormElement>) => void; setView: (view: View) => void }) {
+function LoginPage({ role, heading, onSubmit, setView }: { role: "patient" | "doctor" | "admin"; heading: string; onSubmit: (event: FormEvent<HTMLFormElement>) => void; setView: (view: View) => void }) {
   const points = role === "doctor"
     ? ["Call the next patient", "Pause or resume sessions", "Add walk-ins quickly"]
     : role === "patient"
@@ -688,12 +688,12 @@ function LoginPage({ role, heading, defaultPhone, onSubmit, setView }: { role: "
       </div>
       <form className="auth-card" onSubmit={onSubmit}>
         <div className="demo-access">
-          <span>Demo account</span>
-          <b>{defaultPhone}</b>
-          <small>Password: password123</small>
+          <span>Secure access</span>
+          <b>{role === "admin" ? "Admin credentials required" : role === "doctor" ? "Approved doctor account required" : "Patient account required"}</b>
+          <small>{role === "admin" ? "Create the first admin with production environment variables." : "Use the account details created during registration."}</small>
         </div>
-        <label>{role === "admin" ? "Email or phone" : role === "doctor" ? "Phone or email" : "Phone number"}<input name="phone" defaultValue={defaultPhone} required /></label>
-        <label>Password<input name="password" type="password" defaultValue="password123" minLength={6} required /></label>
+        <label>{role === "admin" ? "Email or phone" : role === "doctor" ? "Phone or email" : "Phone number"}<input name="phone" autoComplete="username" required /></label>
+        <label>Password<input name="password" type="password" autoComplete="current-password" minLength={6} required /></label>
         <button className="primary large">Login</button>
         <button type="button" className="link-button" onClick={() => setView("forgot")}>Forgot password?</button>
         {role === "patient" && <button type="button" onClick={() => setView("patient-register")}>Create patient account</button>}
@@ -842,9 +842,9 @@ function DoctorPortalAccess({ setView }: { setView: (view: View) => void }) {
             </div>
           </div>
           <div className="doctor-access-card">
-            <span>Demo doctor access</span>
-            <b>0771000001</b>
-            <small>Password: password123</small>
+            <span>Doctor access</span>
+            <b>Login after approval</b>
+            <small>New doctors stay pending until admin verifies payment.</small>
           </div>
         </section>
         <div id="doctor-access-live-queue" className="metric-row doctor-access-section">
@@ -1150,9 +1150,9 @@ function AdminPortalAccess({ setView }: { setView: (view: View) => void }) {
             </div>
           </div>
           <div className="doctor-access-card">
-            <span>Demo admin access</span>
-            <b>0770000000</b>
-            <small>Password: password123</small>
+            <span>Admin access</span>
+            <b>Environment configured</b>
+            <small>Set ADMIN_PHONE and ADMIN_PASSWORD before first production login.</small>
           </div>
         </section>
         <section className="doctor-access-preview">

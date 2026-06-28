@@ -3,8 +3,13 @@ import { jwtVerify, SignJWT } from "jose";
 import type { Role, User } from "./types";
 import { readDb } from "./db";
 
-const secret = new TextEncoder().encode(process.env.AUTH_SECRET ?? "local-dev-secret-change-me");
 const cookieName = "docbook_session";
+
+function getSessionSecret() {
+  const secret = process.env.JWT_SECRET ?? process.env.AUTH_SECRET;
+  if (!secret) throw new Error("JWT_SECRET is required for authentication.");
+  return new TextEncoder().encode(secret);
+}
 
 export async function signSession(user: User) {
   return new SignJWT({ role: user.role, phone: user.phone })
@@ -12,7 +17,7 @@ export async function signSession(user: User) {
     .setSubject(user.id)
     .setIssuedAt()
     .setExpirationTime("7d")
-    .sign(secret);
+    .sign(getSessionSecret());
 }
 
 export async function setSessionCookie(token: string) {
@@ -36,7 +41,7 @@ export async function getCurrentUser(requiredRole?: Role | Role[]) {
   const token = jar.get(cookieName)?.value;
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, getSessionSecret());
     const db = await readDb();
     const user = db.users.find((item) => item.id === payload.sub);
     if (!user || user.status !== "active") return null;

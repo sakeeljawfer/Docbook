@@ -1,6 +1,7 @@
 node_modules
 .next
 src/data/db.json
+.env
 .env*.local
 npm-debug.log*
 .vercel

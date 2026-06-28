@@ -1,50 +1,116 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import type { Appointment, Database, Notification, PaymentStatus, QueueSession } from "./types";
-import { createSeedData } from "./seed";
+import bcrypt from "bcryptjs";
+import { MongoClient, type Collection } from "mongodb";
+import type { Appointment, Database, Notification, QueueSession, User } from "./types";
 
-const dataDir = process.env.VERCEL ? "/tmp/docbook" : path.join(process.cwd(), "src", "data");
-const dbPath = path.join(dataDir, "db.json");
+type StoredDatabase = Database & { _id: "docbook"; schemaVersion: number };
 
-async function ensureDb() {
-  await mkdir(dataDir, { recursive: true });
-  try {
-    await readFile(dbPath, "utf8");
-  } catch {
-    await writeDb(createSeedData());
+const baseSpecializations = [
+  { id: "sp_general_medicine", name: "General Medicine", status: "active" as const },
+  { id: "sp_pediatrics", name: "Pediatrics", status: "active" as const },
+  { id: "sp_dermatology", name: "Dermatology", status: "active" as const },
+  { id: "sp_cardiology", name: "Cardiology", status: "active" as const }
+];
+
+const baseLocations = [
+  { id: "loc_colombo", city: "Colombo", district: "Colombo", province: "Western" },
+  { id: "loc_kandy", city: "Kandy", district: "Kandy", province: "Central" },
+  { id: "loc_galle", city: "Galle", district: "Galle", province: "Southern" }
+];
+
+let mongoClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (mongoClient) return mongoClient;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI is required. Add it to your local .env and production environment variables.");
   }
+  mongoClient = new MongoClient(uri, { ignoreUndefined: true });
+  await mongoClient.connect();
+  return mongoClient;
+}
+
+async function getCollection(): Promise<Collection<StoredDatabase>> {
+  const client = await getMongoClient();
+  const dbName = process.env.MONGODB_DB ?? "docbook";
+  const collectionName = process.env.MONGODB_COLLECTION ?? "app_state";
+  return client.db(dbName).collection<StoredDatabase>(collectionName);
+}
+
+async function createInitialDb(): Promise<StoredDatabase> {
+  const now = new Date().toISOString();
+  const users: User[] = [];
+
+  if (process.env.ADMIN_PHONE && process.env.ADMIN_PASSWORD) {
+    users.push({
+      id: crypto.randomUUID(),
+      role: "admin",
+      name: process.env.ADMIN_NAME ?? "Platform Admin",
+      phone: process.env.ADMIN_PHONE,
+      email: process.env.ADMIN_EMAIL || undefined,
+      passwordHash: await bcrypt.hash(process.env.ADMIN_PASSWORD, 10),
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  return {
+    _id: "docbook",
+    schemaVersion: 1,
+    users,
+    doctorProfiles: [],
+    doctorSessions: [],
+    appointments: [],
+    queueSessions: [],
+    notifications: [],
+    specializations: baseSpecializations,
+    locations: baseLocations
+  };
+}
+
+async function ensureDb(): Promise<StoredDatabase> {
+  const collection = await getCollection();
+  const existing = await collection.findOne({ _id: "docbook" });
+  if (existing) return normalizeDb(existing);
+
+  const initialDb = await createInitialDb();
+  await collection.insertOne(initialDb);
+  return initialDb;
 }
 
 export async function readDb(): Promise<Database> {
-  await ensureDb();
-  return normalizeDb(JSON.parse(await readFile(dbPath, "utf8")) as Database);
+  const db = await ensureDb();
+  return stripStorageFields(db);
 }
 
-function normalizeDb(db: Database): Database {
-  const demoPaymentStatuses: PaymentStatus[] = ["paid", "unpaid", "overdue"];
-  db.doctorProfiles.forEach((doctor, index) => {
-    if (!doctor.paymentStatus) {
-      doctor.paymentStatus = doctor.verificationStatus === "approved" ? demoPaymentStatuses[index] ?? "paid" : "unpaid";
-    }
-
-    if (doctor.paymentStatus === "paid") {
-      if (!doctor.paymentReference) doctor.paymentReference = `PAY-${String(1001 + index)}`;
-      if (!doctor.lastPaymentAt) doctor.lastPaymentAt = doctor.updatedAt;
-      if (!doctor.approvedAt && doctor.verificationStatus === "approved") doctor.approvedAt = doctor.updatedAt;
-    }
-
-    if (doctor.paymentStatus === "overdue") {
-      if (!doctor.blockedAt) doctor.blockedAt = doctor.updatedAt;
-      const doctorUser = db.users.find((user) => user.id === doctor.userId);
-      if (doctorUser?.status === "active") doctorUser.status = "blocked";
-    }
-  });
+function normalizeDb(db: StoredDatabase): StoredDatabase {
+  db.schemaVersion ??= 1;
+  db.users ??= [];
+  db.doctorProfiles ??= [];
+  db.doctorSessions ??= [];
+  db.appointments ??= [];
+  db.queueSessions ??= [];
+  db.notifications ??= [];
+  db.specializations = db.specializations?.length ? db.specializations : baseSpecializations;
+  db.locations = db.locations?.length ? db.locations : baseLocations;
   return db;
 }
 
+function stripStorageFields(db: StoredDatabase): Database {
+  const { _id, schemaVersion, ...data } = db;
+  void _id;
+  void schemaVersion;
+  return data;
+}
+
+function withStorageFields(db: Database): StoredDatabase {
+  return { _id: "docbook", schemaVersion: 1, ...db };
+}
+
 export async function writeDb(db: Database) {
-  await mkdir(dataDir, { recursive: true });
-  await writeFile(dbPath, JSON.stringify(db, null, 2));
+  const collection = await getCollection();
+  await collection.replaceOne({ _id: "docbook" }, normalizeDb(withStorageFields(db)), { upsert: true });
 }
 
 export async function mutateDb<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
