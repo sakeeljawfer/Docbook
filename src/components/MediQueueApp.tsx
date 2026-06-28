@@ -108,6 +108,11 @@ const initialViewForPortal = (portal: Portal): View => portal === "doctor" ? "do
 const today = () => new Date().toISOString().slice(0, 10);
 const statusClass = (status?: string) => `status status-${(status ?? "confirmed").replace(/\s+/g, "-")}`;
 const readable = (value: string) => value.replace(/-/g, " ").replace(/[A-Z]/g, " $&").trim();
+const sectionIdFor = (scope: string, label: string) => `${scope}-${label.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -754,61 +759,79 @@ function DoctorDashboard({ user, data, onAction, onControl, onAppointmentAction,
   const noShows = data.appointments.filter((item) => item.status === "no-show").length;
   const currentQueue = data.queues.find((item) => item.sessionId === sessionId);
   const waiting = data.appointments.filter((item) => item.status === "waiting" || item.status === "confirmed").length;
+  const sectionId = (label: string) => sectionIdFor("dashboard", label);
   return (
     <DashboardShell title="Clinic Dashboard" nav={["Overview", "Today’s Queue", "Patients", "Walk-in", "Sessions"]}>
-      <section className="doctor-portal-brief">
+      <section id={sectionId("Overview")} className="doctor-portal-brief dashboard-section">
         <div>
           <span className="eyebrow">Doctor workspace</span>
           <h2>Maintain patients, bookings, and the live queue from one place.</h2>
           <p className="muted">This is the operational dashboard we can give each clinic after onboarding.</p>
         </div>
         <div className="doctor-portal-actions">
-          <Button icon={<FileTextOutlined />}>Patient records</Button>
-          <Button type="primary" icon={<PlusOutlined />} disabled={!sessionId}>Add patient</Button>
+          <Button icon={<FileTextOutlined />} onClick={() => scrollToSection(sectionId("Patients"))}>Patient records</Button>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!sessionId} onClick={() => scrollToSection(sectionId("Walk-in"))}>Add patient</Button>
         </div>
       </section>
-      <div className="doctor-command">
-        <div className="current-patient card">
-          <span className="eyebrow">Current patient</span>
-          <strong>{current?.queueNumber ?? "-"}</strong>
-          <p>{current?.patientName ?? "No patient called yet"}</p>
-          <button className="primary huge" disabled={!sessionId} onClick={() => sessionId && onAction("next", sessionId)}>Next Patient</button>
-        </div>
-        <div className="queue-side card">
-          <h2>Waiting list</h2>
-          <p><b>{next?.queueNumber ?? "-"}</b> {next?.patientName ?? "Waiting list is empty"}</p>
-          <div className="doctor-actions">
-            <button disabled={!sessionId} onClick={() => sessionId && onAction("start", sessionId)}>Start Session</button>
-            <button disabled={!sessionId || currentQueue?.status !== "running"} onClick={() => sessionId && onControl("pause", sessionId)}>Pause Queue</button>
-            <button disabled={!sessionId || currentQueue?.status !== "paused"} onClick={() => sessionId && onControl("resume", sessionId)}>Resume Queue</button>
-            <button disabled={!sessionId} onClick={() => sessionId && onControl("end", sessionId)}>End Session</button>
-          </div>
-        </div>
-      </div>
       <div className="metric-row">
         <Metric label="Total appointments" value={data.appointments.length} />
         <Metric label="Waiting" value={waiting} />
         <Metric label="Completed" value={completed} />
         <Metric label="No-show" value={noShows} />
       </div>
-      <DoctorPatientPanel appointments={data.appointments} />
-      <WalkInForm sessionId={sessionId} onWalkIn={onWalkIn} />
-      <QueueTable appointments={data.appointments} onAppointmentAction={onAppointmentAction} />
+      <section id={sectionId("Today’s Queue")} className="dashboard-section doctor-queue-section">
+        <div className="doctor-command">
+          <div className="current-patient card">
+            <span className="eyebrow">Current patient</span>
+            <strong>{current?.queueNumber ?? "-"}</strong>
+            <p>{current?.patientName ?? "No patient called yet"}</p>
+            <button className="primary huge" disabled={!sessionId} onClick={() => sessionId && onAction("next", sessionId)}>Next Patient</button>
+          </div>
+          <div className="queue-side card">
+            <h2>Waiting list</h2>
+            <p><b>{next?.queueNumber ?? "-"}</b> {next?.patientName ?? "Waiting list is empty"}</p>
+            <div className="doctor-actions">
+              <button disabled={!sessionId} onClick={() => sessionId && onAction("start", sessionId)}>Start Session</button>
+              <button disabled={!sessionId || currentQueue?.status !== "running"} onClick={() => sessionId && onControl("pause", sessionId)}>Pause Queue</button>
+              <button disabled={!sessionId || currentQueue?.status !== "paused"} onClick={() => sessionId && onControl("resume", sessionId)}>Resume Queue</button>
+              <button disabled={!sessionId} onClick={() => sessionId && onControl("end", sessionId)}>End Session</button>
+            </div>
+          </div>
+        </div>
+        <QueueTable appointments={data.appointments} onAppointmentAction={onAppointmentAction} />
+      </section>
+      <section id={sectionId("Patients")} className="dashboard-section">
+        <DoctorPatientPanel appointments={data.appointments} />
+      </section>
+      <section id={sectionId("Walk-in")} className="dashboard-section">
+        <WalkInForm sessionId={sessionId} onWalkIn={onWalkIn} />
+      </section>
+      <section id={sectionId("Sessions")} className="dashboard-section">
+        <DoctorSessionsPanel queues={data.queues} />
+      </section>
     </DashboardShell>
   );
 }
 
 function DoctorPortalAccess({ setView }: { setView: (view: View) => void }) {
+  const accessNav = [
+    { label: "Overview", target: "doctor-access-overview", icon: <DashboardOutlined /> },
+    { label: "Patient bookings", target: "doctor-access-patient-bookings", icon: <CalendarOutlined /> },
+    { label: "Live queue", target: "doctor-access-live-queue", icon: <TeamOutlined /> },
+    { label: "Walk-ins", target: "doctor-access-walk-ins", icon: <PlusOutlined /> },
+    { label: "Clinic settings", target: "doctor-access-clinic-settings", icon: <MedicineBoxOutlined /> }
+  ];
+
   return (
     <section className="doctor-access-shell">
       <aside className="doctor-access-sidebar">
         <span className="logo mini"><LogoMark />DocBook Doctor</span>
-        {["Overview", "Patient bookings", "Live queue", "Walk-ins", "Clinic settings"].map((item) => (
-          <Button key={item} type={item === "Overview" ? "primary" : "text"} icon={item.includes("queue") ? <TeamOutlined /> : item.includes("booking") ? <CalendarOutlined /> : <DashboardOutlined />}>{item}</Button>
+        {accessNav.map((item) => (
+          <Button key={item.label} type={item.label === "Overview" ? "primary" : "text"} icon={item.icon} onClick={() => scrollToSection(item.target)}>{item.label}</Button>
         ))}
       </aside>
       <div className="doctor-access-main">
-        <section className="doctor-access-hero">
+        <section id="doctor-access-overview" className="doctor-access-hero doctor-access-section">
           <div>
             <span className="eyebrow">Clinic onboarding portal</span>
             <h1>Give every doctor a private dashboard to maintain patients.</h1>
@@ -824,14 +847,14 @@ function DoctorPortalAccess({ setView }: { setView: (view: View) => void }) {
             <small>Password: password123</small>
           </div>
         </section>
-        <div className="metric-row">
+        <div id="doctor-access-live-queue" className="metric-row doctor-access-section">
           <Metric label="Queue control" value={4} />
           <Metric label="Patient actions" value={5} />
           <Metric label="Clinic sessions" value={2} />
           <Metric label="Live board" value={1} />
         </div>
         <section className="doctor-access-preview">
-          <Card variant="borderless">
+          <Card id="doctor-access-patient-bookings" className="doctor-access-section" variant="borderless">
             <h2>Patient maintenance</h2>
             <p className="muted">View booked patients, walk-ins, phone numbers, status, and visit reason.</p>
             <div className="role-checks">
@@ -840,13 +863,22 @@ function DoctorPortalAccess({ setView }: { setView: (view: View) => void }) {
               <span><CheckCircleOutlined /> Add walk-ins to today’s session</span>
             </div>
           </Card>
-          <Card variant="borderless">
+          <Card id="doctor-access-walk-ins" className="doctor-access-section" variant="borderless">
             <h2>Operational queue desk</h2>
             <p className="muted">Start, pause, resume, or end a clinic session without leaving the dashboard.</p>
             <div className="role-checks">
               <span><CheckCircleOutlined /> Call the next queue number</span>
               <span><CheckCircleOutlined /> Sync public queue board</span>
               <span><CheckCircleOutlined /> Review daily appointment metrics</span>
+            </div>
+          </Card>
+          <Card id="doctor-access-clinic-settings" className="doctor-access-section" variant="borderless">
+            <h2>Clinic settings</h2>
+            <p className="muted">After login, doctors can maintain clinic profile, consultation timing, session capacity, and onboarding details.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Profile and location</span>
+              <span><CheckCircleOutlined /> Session capacity</span>
+              <span><CheckCircleOutlined /> Approval status</span>
             </div>
           </Card>
         </section>
@@ -875,24 +907,44 @@ function DoctorPatientPanel({ appointments }: { appointments: Appointment[] }) {
   );
 }
 
+function DoctorSessionsPanel({ queues }: { queues: Array<{ sessionId: string; status: string; currentQueueNumber?: string }> }) {
+  return (
+    <div className="card doctor-sessions-panel">
+      <div>
+        <h2>Sessions</h2>
+        <p className="muted">Today’s clinic sessions and live queue state.</p>
+      </div>
+      {queues.length === 0 ? <p className="muted">No sessions are active today.</p> : queues.map((item) => (
+        <div className="doctor-session-row" key={item.sessionId}>
+          <b>{readable(item.sessionId.split("_").slice(-1)[0] ?? "Session")}</b>
+          <span className={statusClass(item.status)}>{readable(item.status)}</span>
+          <span>Now serving <strong>{item.currentQueueNumber ?? "-"}</strong></span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User | null; admin: AdminPayload | null; setView: (view: View) => void; onDoctorAction: (doctorId: string, action: AdminDoctorAction) => void }) {
   if (user?.role !== "admin") return <AdminPortalAccess setView={setView} />;
   const summary = admin?.summary ?? {};
   const doctors = admin?.doctors ?? [];
   const patients = admin?.patients ?? [];
+  const appointments = admin?.appointments ?? [];
+  const adminSectionId = (label: string) => sectionIdFor("dashboard", label);
   const paymentColor = (status?: string) => status === "paid" ? "success" : status === "overdue" ? "error" : "warning";
   const accountColor = (status?: string) => status === "active" ? "success" : status === "blocked" ? "error" : "processing";
   return (
     <DashboardShell title="Admin Control Center" nav={["Overview", "Doctor Payments", "Patients", "Approvals", "Reports", "Settings"]}>
-      <section className="admin-command-panel">
+      <section className="admin-command-panel dashboard-section" id={adminSectionId("Overview")}>
         <div>
           <span className="eyebrow">Admin operations</span>
           <h2>Approve paid doctors and block unpaid clinics before patients can book them.</h2>
           <p className="muted">Patient search only shows doctors who are approved, paid, and active. This dashboard controls those gates.</p>
         </div>
         <div className="admin-command-actions">
-          <Button type="primary" icon={<CreditCardOutlined />}>Payment review</Button>
-          <Button icon={<UserOutlined />}>Patient records</Button>
+          <Button type="primary" icon={<CreditCardOutlined />} onClick={() => scrollToSection(adminSectionId("Doctor Payments"))}>Payment review</Button>
+          <Button icon={<UserOutlined />} onClick={() => scrollToSection(adminSectionId("Patients"))}>Patient records</Button>
         </div>
       </section>
       <div className="metric-row">
@@ -902,7 +954,7 @@ function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User |
         <Metric label="Blocked doctors" value={summary.blockedDoctors ?? 0} />
       </div>
       <section className="admin-management-grid">
-        <div className="card admin-table-card">
+        <div className="card admin-table-card dashboard-section" id={adminSectionId("Doctor Payments")}>
           <div className="admin-table-title">
             <div>
               <h2>Doctor payment approvals</h2>
@@ -913,7 +965,7 @@ function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User |
           <div className="admin-doctor-list">
             {doctors.map((doctor) => (
               <div className="admin-doctor-row" key={doctor.id}>
-                <div>
+                <div className="admin-doctor-profile">
                   <b>{doctor.doctorName}</b>
                   <span>{doctor.clinicName} · {doctor.specialization ?? doctor.city}</span>
                   <small>{doctor.doctorPhone ?? "No phone"} · {doctor.doctorEmail ?? "No email"}</small>
@@ -924,12 +976,13 @@ function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User |
                   <Tag>{readable(doctor.verificationStatus ?? "pending")}</Tag>
                 </div>
                 <div className="admin-payment-note">
-                  <span>{doctor.paymentReference ?? "No reference"}</span>
+                  <span className="admin-payment-label">Payment</span>
+                  <b>{doctor.paymentReference ?? "No reference"}</b>
                   <small>{doctor.lastPaymentAt ? new Date(doctor.lastPaymentAt).toLocaleDateString() : "Payment not confirmed"}</small>
                 </div>
                 <div className="admin-action-row">
-                  <Button size="small" type="primary" icon={<CreditCardOutlined />} onClick={() => onDoctorAction(doctor.id, "approve-payment")}>Approve payment</Button>
-                  <Button size="small" danger icon={<StopOutlined />} disabled={doctor.paymentStatus === "paid" || doctor.userStatus === "blocked"} onClick={() => onDoctorAction(doctor.id, "block-unpaid")}>Block unpaid</Button>
+                  <Button size="small" type="primary" icon={<CreditCardOutlined />} disabled={doctor.paymentStatus === "paid" && doctor.verificationStatus === "approved" && doctor.userStatus === "active"} onClick={() => onDoctorAction(doctor.id, "approve-payment")}>Approve</Button>
+                  <Button size="small" danger icon={<StopOutlined />} disabled={doctor.paymentStatus === "paid" || doctor.userStatus === "blocked"} onClick={() => onDoctorAction(doctor.id, "block-unpaid")}>Block</Button>
                   <Button size="small" icon={<UnlockOutlined />} disabled={doctor.userStatus !== "blocked"} onClick={() => onDoctorAction(doctor.id, "unblock")}>Unblock</Button>
                   <Button size="small" danger disabled={doctor.verificationStatus === "rejected"} onClick={() => onDoctorAction(doctor.id, "reject")}>Reject</Button>
                 </div>
@@ -937,7 +990,7 @@ function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User |
             ))}
           </div>
         </div>
-        <div className="card admin-table-card">
+        <div className="card admin-table-card dashboard-section" id={adminSectionId("Patients")}>
           <div className="admin-table-title">
             <div>
               <h2>Patients</h2>
@@ -959,21 +1012,133 @@ function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User |
           </div>
         </div>
       </section>
+      <section className="admin-secondary-grid">
+        <AdminApprovalsPanel doctors={doctors} onDoctorAction={onDoctorAction} sectionId={adminSectionId("Approvals")} />
+        <AdminReportsPanel summary={summary} doctors={doctors} patients={patients} appointments={appointments} sectionId={adminSectionId("Reports")} />
+        <AdminSettingsPanel sectionId={adminSectionId("Settings")} />
+      </section>
     </DashboardShell>
   );
 }
 
+function AdminApprovalsPanel({ doctors, onDoctorAction, sectionId }: { doctors: Doctor[]; onDoctorAction: (doctorId: string, action: AdminDoctorAction) => void; sectionId: string }) {
+  const reviewDoctors = doctors.filter((doctor) => doctor.verificationStatus !== "approved" || doctor.paymentStatus !== "paid" || doctor.userStatus === "blocked");
+  const paymentColor = (status?: string) => status === "paid" ? "success" : status === "overdue" ? "error" : "warning";
+  const accountColor = (status?: string) => status === "active" ? "success" : status === "blocked" ? "error" : "processing";
+
+  return (
+    <div className="card admin-table-card admin-approval-panel dashboard-section" id={sectionId}>
+      <div className="admin-table-title">
+        <div>
+          <h2>Approvals</h2>
+          <p className="muted">Doctors needing payment confirmation, account unblock, or profile rejection.</p>
+        </div>
+        <Tag color={reviewDoctors.length ? "warning" : "success"}>{reviewDoctors.length} to review</Tag>
+      </div>
+      <div className="admin-approval-list">
+        {reviewDoctors.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="All doctors are clear" /> : reviewDoctors.map((doctor) => (
+          <div className="admin-approval-row" key={doctor.id}>
+            <div>
+              <b>{doctor.doctorName}</b>
+              <span>{doctor.clinicName} · {doctor.paymentReference ?? "No payment reference"}</span>
+            </div>
+            <div className="admin-status-stack">
+              <Tag color={paymentColor(doctor.paymentStatus)}>{readable(doctor.paymentStatus ?? "unpaid")}</Tag>
+              <Tag color={accountColor(doctor.userStatus)}>{readable(doctor.userStatus ?? "pending")}</Tag>
+              <Tag>{readable(doctor.verificationStatus ?? "pending")}</Tag>
+            </div>
+            <div className="admin-action-row">
+              <Button size="small" type="primary" icon={<CreditCardOutlined />} onClick={() => onDoctorAction(doctor.id, "approve-payment")}>Approve</Button>
+              <Button size="small" danger icon={<StopOutlined />} disabled={doctor.paymentStatus === "paid" || doctor.userStatus === "blocked"} onClick={() => onDoctorAction(doctor.id, "block-unpaid")}>Block</Button>
+              <Button size="small" icon={<UnlockOutlined />} disabled={doctor.userStatus !== "blocked"} onClick={() => onDoctorAction(doctor.id, "unblock")}>Unblock</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminReportsPanel({ summary, doctors, patients, appointments, sectionId }: { summary: Record<string, number>; doctors: Doctor[]; patients: User[]; appointments: Appointment[]; sectionId: string }) {
+  const activeDoctors = doctors.filter((doctor) => doctor.userStatus === "active").length;
+  const pendingPayments = doctors.filter((doctor) => doctor.paymentStatus !== "paid").length;
+  const today = new Date().toISOString().slice(0, 10);
+  const todayAppointments = appointments.filter((appointment) => appointment.appointmentDate === today).length;
+
+  return (
+    <div className="card admin-table-card dashboard-section" id={sectionId}>
+      <div className="admin-table-title">
+        <div>
+          <h2>Reports</h2>
+          <p className="muted">Fast read on platform health and booking readiness.</p>
+        </div>
+        <Tag color="blue">Live</Tag>
+      </div>
+      <div className="admin-report-grid">
+        <div className="admin-report-tile"><span>Active doctors</span><b>{activeDoctors}</b></div>
+        <div className="admin-report-tile"><span>Pending payments</span><b>{pendingPayments}</b></div>
+        <div className="admin-report-tile"><span>Today bookings</span><b>{todayAppointments}</b></div>
+        <div className="admin-report-tile"><span>Total appointments</span><b>{summary.totalAppointments ?? appointments.length}</b></div>
+        <div className="admin-report-tile"><span>Patients</span><b>{summary.totalPatients ?? patients.length}</b></div>
+        <div className="admin-report-tile"><span>Blocked doctors</span><b>{summary.blockedDoctors ?? 0}</b></div>
+      </div>
+    </div>
+  );
+}
+
+function AdminSettingsPanel({ sectionId }: { sectionId: string }) {
+  return (
+    <div className="card admin-table-card dashboard-section" id={sectionId}>
+      <div className="admin-table-title">
+        <div>
+          <h2>Settings</h2>
+          <p className="muted">Portal shortcuts and operating rules for marketplace access.</p>
+        </div>
+        <Tag color="purple">Admin</Tag>
+      </div>
+      <div className="admin-settings-list">
+        <span><CheckCircleOutlined /> Only approved, paid, active doctors appear to patients.</span>
+        <span><CheckCircleOutlined /> Blocked doctors can still be reviewed by admins.</span>
+        <span><CheckCircleOutlined /> Patient and doctor portals are separated from the admin workspace.</span>
+      </div>
+      <div className="admin-settings-actions">
+        <Button icon={<CalendarOutlined />} href="/patients">Open patient app</Button>
+        <Button icon={<MedicineBoxOutlined />} href="/doctors">Open doctor app</Button>
+      </div>
+    </div>
+  );
+}
+
 function AdminPortalAccess({ setView }: { setView: (view: View) => void }) {
+  const accessNav = [
+    { label: "Overview", target: "admin-access-overview", icon: <DashboardOutlined /> },
+    { label: "Doctor payments", target: "admin-access-doctor-payments", icon: <CreditCardOutlined /> },
+    { label: "Patients", target: "admin-access-patients", icon: <UserOutlined /> },
+    { label: "Approvals", target: "admin-access-approvals", icon: <CheckCircleOutlined /> },
+    { label: "Reports", target: "admin-access-reports", icon: <FileTextOutlined /> }
+  ];
+  const [activeAccessNav, setActiveAccessNav] = useState(accessNav[0].target);
+
   return (
     <section className="doctor-access-shell admin-access-shell">
       <aside className="doctor-access-sidebar">
         <span className="logo mini"><LogoMark />DocBook Admin</span>
-        {["Overview", "Doctor payments", "Patients", "Approvals", "Reports"].map((item) => (
-          <Button key={item} type={item === "Overview" ? "primary" : "text"} icon={item.includes("payment") ? <CreditCardOutlined /> : item.includes("Patient") ? <UserOutlined /> : <DashboardOutlined />}>{item}</Button>
+        {accessNav.map((item) => (
+          <Button
+            key={item.target}
+            type={activeAccessNav === item.target ? "primary" : "text"}
+            icon={item.icon}
+            onClick={() => {
+              setActiveAccessNav(item.target);
+              scrollToSection(item.target);
+            }}
+          >
+            {item.label}
+          </Button>
         ))}
       </aside>
       <div className="doctor-access-main">
-        <section className="doctor-access-hero admin-access-hero">
+        <section className="doctor-access-hero admin-access-hero doctor-access-section" id="admin-access-overview">
           <div>
             <span className="eyebrow">Platform admin portal</span>
             <h1>Manage doctors, patients, payments, and clinic access.</h1>
@@ -991,7 +1156,7 @@ function AdminPortalAccess({ setView }: { setView: (view: View) => void }) {
           </div>
         </section>
         <section className="doctor-access-preview">
-          <Card variant="borderless">
+          <Card variant="borderless" className="doctor-access-section" id="admin-access-doctor-payments">
             <h2>Doctor approval desk</h2>
             <p className="muted">Approve paid doctors, block unpaid clinics, and reject profiles that should not go live.</p>
             <div className="role-checks">
@@ -1000,13 +1165,31 @@ function AdminPortalAccess({ setView }: { setView: (view: View) => void }) {
               <span><CheckCircleOutlined /> Patient booking visibility</span>
             </div>
           </Card>
-          <Card variant="borderless">
+          <Card variant="borderless" className="doctor-access-section" id="admin-access-patients">
             <h2>Patient oversight</h2>
             <p className="muted">Review active patient accounts and bookings as the platform grows.</p>
             <div className="role-checks">
               <span><CheckCircleOutlined /> Patient records</span>
               <span><CheckCircleOutlined /> Appointment volume</span>
               <span><CheckCircleOutlined /> Queue health</span>
+            </div>
+          </Card>
+          <Card variant="borderless" className="doctor-access-section" id="admin-access-approvals">
+            <h2>Approvals workflow</h2>
+            <p className="muted">Keep payment review, profile approval, and unpaid blocking in one operational flow.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Payment evidence</span>
+              <span><CheckCircleOutlined /> Profile verification</span>
+              <span><CheckCircleOutlined /> Access recovery</span>
+            </div>
+          </Card>
+          <Card variant="borderless" className="doctor-access-section" id="admin-access-reports">
+            <h2>Reports</h2>
+            <p className="muted">Track active clinics, pending payments, patient growth, and booking volume.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Doctor status</span>
+              <span><CheckCircleOutlined /> Payment health</span>
+              <span><CheckCircleOutlined /> Booking readiness</span>
             </div>
           </Card>
         </section>
@@ -1038,7 +1221,33 @@ function QueueStatusCard({ doctor }: { doctor: Doctor }) {
 }
 
 function DashboardShell({ title, nav, children }: { title: string; nav: string[]; children: React.ReactNode }) {
-  return <section className="dashboard-shell"><aside className="dashboard-sidebar"><span className="logo mini"><LogoMark />DocBook</span>{nav.map((item) => <Button key={item} type="text" icon={item.includes("Queue") ? <TeamOutlined /> : item.includes("Notification") ? <BellOutlined /> : <HomeOutlined />}>{item}</Button>)}</aside><div className="dashboard-main"><div className="dashboard-title"><h1>{title}</h1><Tag color="success">Live updates</Tag></div>{children}</div></section>;
+  const [activeNav, setActiveNav] = useState(nav[0] ?? "");
+  const iconFor = (item: string) => item.includes("Queue") ? <TeamOutlined /> : item.includes("Patient") ? <UserOutlined /> : item.includes("Notification") ? <BellOutlined /> : item.includes("Session") ? <ClockCircleOutlined /> : <HomeOutlined />;
+
+  return (
+    <section className="dashboard-shell">
+      <aside className="dashboard-sidebar">
+        <span className="logo mini"><LogoMark />DocBook</span>
+        {nav.map((item) => (
+          <Button
+            key={item}
+            type={activeNav === item ? "primary" : "text"}
+            icon={iconFor(item)}
+            onClick={() => {
+              setActiveNav(item);
+              scrollToSection(sectionIdFor("dashboard", item));
+            }}
+          >
+            {item}
+          </Button>
+        ))}
+      </aside>
+      <div className="dashboard-main">
+        <div className="dashboard-title"><h1>{title}</h1><Tag color="success">Live updates</Tag></div>
+        {children}
+      </div>
+    </section>
+  );
 }
 
 function QueueTrackingCard({ appointment, board }: { appointment?: Appointment; board: PublicBoard | null }) {

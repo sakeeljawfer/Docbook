@@ -951,6 +951,10 @@ legend {
 }
 .dashboard-sidebar button:hover { background: var(--soft); color: var(--primary-dark); }
 .dashboard-main { display: grid; gap: 14px; min-width: 0; }
+.dashboard-section,
+.doctor-access-section {
+  scroll-margin-top: 118px;
+}
 .dashboard-title {
   display: flex;
   justify-content: space-between;
@@ -1078,8 +1082,15 @@ legend {
   display: grid;
   gap: 8px;
 }
+.doctor-queue-section,
+.doctor-sessions-panel {
+  display: grid;
+  gap: 14px;
+}
 .doctor-patient-panel h2,
-.doctor-patient-panel p {
+.doctor-patient-panel p,
+.doctor-sessions-panel h2,
+.doctor-sessions-panel p {
   margin-bottom: 0;
 }
 .patient-maintenance-row {
@@ -1089,6 +1100,17 @@ legend {
   align-items: center;
   padding: 10px 0;
   border-top: 1px solid var(--line);
+}
+.doctor-session-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) auto minmax(150px, .8fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+.doctor-session-row strong {
+  color: var(--blue);
 }
 .action-card { display: grid; gap: 10px; align-content: start; }
 .tracking-card strong {
@@ -1215,6 +1237,11 @@ legend {
   grid-template-columns: minmax(0, 1.55fr) minmax(320px, .8fr);
   gap: 14px;
 }
+.admin-secondary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, .8fr);
+  gap: 14px;
+}
 .admin-table-card {
   display: grid;
   gap: 12px;
@@ -1231,26 +1258,56 @@ legend {
   margin-bottom: 0;
 }
 .admin-doctor-list,
-.admin-patient-list {
+.admin-patient-list,
+.admin-approval-list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 .admin-doctor-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.35fr) minmax(130px, .65fr) minmax(120px, .55fr) minmax(210px, .9fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, .56fr) minmax(0, .58fr) minmax(216px, .72fr);
+  grid-template-areas: "profile status payment actions";
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  box-shadow: 0 8px 22px rgba(16, 44, 50, .035);
+}
+.admin-doctor-row:hover {
+  border-color: rgba(47, 111, 188, .22);
+  background: #ffffff;
+}
+.admin-approval-panel {
+  grid-column: 1 / -1;
+}
+.admin-approval-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(160px, .75fr) auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f9fbfe;
+  background: #fbfcff;
 }
 .admin-doctor-row b,
-.admin-patient-row b {
+.admin-patient-row b,
+.admin-approval-row b {
   display: block;
+}
+.admin-doctor-profile {
+  grid-area: profile;
+  min-width: 0;
+}
+.admin-doctor-profile b {
+  font-size: .98rem;
 }
 .admin-doctor-row span,
 .admin-doctor-row small,
+.admin-approval-row span,
 .admin-payment-note span,
 .admin-payment-note small,
 .admin-patient-row small {
@@ -1265,11 +1322,55 @@ legend {
   gap: 6px;
   flex-wrap: wrap;
 }
+.admin-status-stack {
+  grid-area: status;
+  align-items: center;
+  min-width: 0;
+}
+.admin-status-stack .ant-tag {
+  margin-inline-end: 0;
+  border-radius: 999px;
+  font-weight: 820;
+  text-transform: capitalize;
+}
 .admin-payment-note {
+  grid-area: payment;
   display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.admin-payment-note .admin-payment-label {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.admin-payment-note b {
+  color: var(--ink);
+  font-size: .9rem;
+  overflow-wrap: anywhere;
 }
 .admin-action-row {
   justify-content: end;
+}
+.admin-doctor-row .admin-action-row {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  justify-content: stretch;
+  min-width: 0;
+}
+.admin-doctor-row .admin-action-row .ant-btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  font-weight: 800;
+}
+.admin-doctor-row .admin-action-row .ant-btn > span:not(.ant-btn-icon) {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .admin-patient-row {
   display: grid;
@@ -1278,6 +1379,48 @@ legend {
   align-items: center;
   padding: 10px 0;
   border-top: 1px solid var(--line);
+}
+.admin-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.admin-report-tile {
+  min-height: 86px;
+  display: grid;
+  align-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbff;
+}
+.admin-report-tile span {
+  color: var(--muted);
+  font-size: .86rem;
+  font-weight: 760;
+}
+.admin-report-tile b {
+  font-size: 1.55rem;
+}
+.admin-settings-list {
+  display: grid;
+  gap: 8px;
+}
+.admin-settings-list span {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-weight: 760;
+}
+.admin-settings-list svg {
+  color: var(--success);
+}
+.admin-settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .public-queue { margin-top: 22px; }
 .queue-screen {
@@ -1378,7 +1521,14 @@ legend {
   .site-header { grid-template-columns: minmax(0, 1fr) auto; }
   .public-nav { justify-content: start; }
   .header-actions { justify-content: end; }
-  .clinic-hero, .role-gateway, .gateway-queue-strip, .hero, .profile-layout, .auth-layout, .doctor-command, .doctor-access-shell, .doctor-access-hero, .doctor-portal-brief, .admin-command-panel, .admin-management-grid, .admin-doctor-row { grid-template-columns: 1fr; }
+  .clinic-hero, .role-gateway, .gateway-queue-strip, .hero, .profile-layout, .auth-layout, .doctor-command, .doctor-access-shell, .doctor-access-hero, .doctor-portal-brief, .admin-command-panel, .admin-management-grid, .admin-secondary-grid, .admin-approval-row { grid-template-columns: 1fr; }
+  .admin-doctor-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, .9fr);
+    grid-template-areas:
+      "profile status"
+      "payment actions";
+    align-items: start;
+  }
   .role-gateway-copy, .role-card .ant-card-body { min-height: auto; }
   .doctor-access-sidebar {
     position: static;
@@ -1388,6 +1538,7 @@ legend {
   }
   .doctor-access-sidebar .logo { display: none; }
   .doctor-portal-actions, .admin-command-actions, .admin-action-row { justify-content: start; }
+  .admin-doctor-row .admin-action-row { max-width: none; }
   .feature-grid, .doctor-grid, .dashboard-cards, .metric-row { grid-template-columns: repeat(2, 1fr); }
   .patient-steps, .core-actions { grid-template-columns: repeat(2, 1fr); }
   .filter-bar { grid-template-columns: repeat(2, 1fr); }
@@ -1466,8 +1617,15 @@ legend {
   }
   h1 { font-size: clamp(2rem, 11vw, 3.2rem); }
   .hero-copy, .auth-copy { padding: 20px; }
-  .hero-search, .filter-bar, .feature-grid, .doctor-grid, .split-section, .dashboard-cards, .metric-row, .session-list, .booking-summary, fieldset, .doctor-actions, .admin-actions, .queue-screen-grid, .patient-steps, .core-actions, .queue-preview-grid, .doctor-access-preview, .patient-maintenance-row, .admin-doctor-row, .admin-patient-row {
+  .hero-search, .filter-bar, .feature-grid, .doctor-grid, .split-section, .dashboard-cards, .metric-row, .session-list, .booking-summary, fieldset, .doctor-actions, .admin-actions, .queue-screen-grid, .patient-steps, .core-actions, .queue-preview-grid, .doctor-access-preview, .patient-maintenance-row, .doctor-session-row, .admin-doctor-row, .admin-patient-row, .admin-approval-row, .admin-report-grid {
     grid-template-columns: 1fr;
+  }
+  .admin-doctor-row {
+    grid-template-areas:
+      "profile"
+      "status"
+      "payment"
+      "actions";
   }
   .role-card-grid, .gateway-stats, .gateway-queue-numbers {
     grid-template-columns: 1fr;
@@ -1487,6 +1645,10 @@ legend {
   .admin-command-actions,
   .admin-action-row {
     display: grid;
+  }
+  .admin-doctor-row .admin-action-row {
+    max-width: none;
+    grid-template-columns: 1fr;
   }
   .doctor-access-sidebar {
     grid-auto-flow: row;
