@@ -23,7 +23,7 @@ export function createSeedData(): Database {
     { id: "admin_01", role: "admin" as const, name: "Super Admin", phone: "0770000000", email: "admin@docbook.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
     { id: "doctor_user_01", role: "doctor" as const, name: "Dr. Amara Perera", phone: "0771000001", email: "amara@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
     { id: "doctor_user_02", role: "doctor" as const, name: "Dr. Nimal Silva", phone: "0771000002", email: "nimal@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
-    { id: "doctor_user_03", role: "doctor" as const, name: "Dr. Farah Khan", phone: "0771000003", email: "farah@clinic.test", passwordHash, status: "active" as const, createdAt: now(), updatedAt: now() },
+    { id: "doctor_user_03", role: "doctor" as const, name: "Dr. Farah Khan", phone: "0771000003", email: "farah@clinic.test", passwordHash, status: "blocked" as const, createdAt: now(), updatedAt: now() },
     ...Array.from({ length: 10 }, (_, i) => ({
       id: id("patient", i + 1),
       role: "patient" as const,
@@ -37,9 +37,9 @@ export function createSeedData(): Database {
     }))
   ];
   const doctorProfiles = [
-    { id: "doc_01", userId: "doctor_user_01", doctorName: "Dr. Amara Perera", clinicName: "Lotus Family Clinic", specializationId: "sp_01", registrationNumber: "SLMC-101", consultationFee: 2500, address: "42 Temple Road", city: "Colombo", latitude: 6.9271, longitude: 79.8612, averageConsultationMinutes: 7, verificationStatus: "approved" as const, createdAt: now(), updatedAt: now() },
-    { id: "doc_02", userId: "doctor_user_02", doctorName: "Dr. Nimal Silva", clinicName: "Hill Care Dispensary", specializationId: "sp_02", registrationNumber: "SLMC-102", consultationFee: 2000, address: "18 Lake View", city: "Kandy", latitude: 7.2906, longitude: 80.6337, averageConsultationMinutes: 10, verificationStatus: "approved" as const, createdAt: now(), updatedAt: now() },
-    { id: "doc_03", userId: "doctor_user_03", doctorName: "Dr. Farah Khan", clinicName: "Fort Skin & Heart Centre", specializationId: "sp_03", registrationNumber: "SLMC-103", consultationFee: 3000, address: "7 Rampart Street", city: "Galle", latitude: 6.0535, longitude: 80.221, averageConsultationMinutes: 12, verificationStatus: "approved" as const, createdAt: now(), updatedAt: now() }
+    { id: "doc_01", userId: "doctor_user_01", doctorName: "Dr. Amara Perera", clinicName: "Lotus Family Clinic", specializationId: "sp_01", registrationNumber: "SLMC-101", consultationFee: 2500, address: "42 Temple Road", city: "Colombo", latitude: 6.9271, longitude: 79.8612, averageConsultationMinutes: 7, verificationStatus: "approved" as const, paymentStatus: "paid" as const, paymentReference: "PAY-1001", lastPaymentAt: now(), approvedAt: now(), createdAt: now(), updatedAt: now() },
+    { id: "doc_02", userId: "doctor_user_02", doctorName: "Dr. Nimal Silva", clinicName: "Hill Care Dispensary", specializationId: "sp_02", registrationNumber: "SLMC-102", consultationFee: 2000, address: "18 Lake View", city: "Kandy", latitude: 7.2906, longitude: 80.6337, averageConsultationMinutes: 10, verificationStatus: "approved" as const, paymentStatus: "unpaid" as const, createdAt: now(), updatedAt: now() },
+    { id: "doc_03", userId: "doctor_user_03", doctorName: "Dr. Farah Khan", clinicName: "Fort Skin & Heart Centre", specializationId: "sp_03", registrationNumber: "SLMC-103", consultationFee: 3000, address: "7 Rampart Street", city: "Galle", latitude: 6.0535, longitude: 80.221, averageConsultationMinutes: 12, verificationStatus: "approved" as const, paymentStatus: "overdue" as const, blockedAt: now(), createdAt: now(), updatedAt: now() }
   ];
   const doctorSessions = doctorProfiles.flatMap((doctor, index) => [
     { id: `${doctor.id}_morning`, doctorId: doctor.id, dayOfWeek: new Date().getDay(), sessionName: "Morning", startTime: "08:00", endTime: "12:00", maxPatients: 20, isActive: true },

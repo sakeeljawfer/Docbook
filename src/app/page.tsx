@@ -1,5 +1,5 @@
-import MediQueueApp from "@/components/MediQueueApp";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <MediQueueApp />;
+  redirect("/patients");
 }

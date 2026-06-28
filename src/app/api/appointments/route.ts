@@ -25,6 +25,11 @@ export async function POST(request: Request) {
   if (appointmentDate < new Date().toISOString().slice(0, 10)) return fail("Past dates cannot be booked.");
 
   const result = await mutateDb((db) => {
+    const doctor = db.doctorProfiles.find((item) => item.id === doctorId);
+    const doctorUser = doctor ? db.users.find((item) => item.id === doctor.userId) : undefined;
+    if (!doctor || doctor.verificationStatus !== "approved" || doctor.paymentStatus !== "paid" || doctorUser?.status !== "active") {
+      throw new Error("This doctor is not available for booking.");
+    }
     const session = db.doctorSessions.find((item) => item.id === sessionId && item.doctorId === doctorId);
     if (!session) throw new Error("Invalid session.");
     const sameDay = db.appointments.filter((item) => item.doctorId === doctorId && item.sessionId === sessionId && item.appointmentDate === appointmentDate);
@@ -36,7 +41,6 @@ export async function POST(request: Request) {
     }
     const position = sameDay.length + 1;
     const queueNumber = `${session.sessionName[0].toUpperCase()}${String(position).padStart(3, "0")}`;
-    const doctor = db.doctorProfiles.find((item) => item.id === doctorId);
     const now = new Date().toISOString();
     const appointment = {
       id: crypto.randomUUID(),

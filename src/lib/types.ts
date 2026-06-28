@@ -1,5 +1,6 @@
 export type Role = "patient" | "doctor" | "admin";
 export type UserStatus = "active" | "blocked" | "pending" | "suspended";
+export type PaymentStatus = "paid" | "unpaid" | "overdue";
 export type AppointmentStatus =
   | "pending"
   | "confirmed"
@@ -37,6 +38,11 @@ export type DoctorProfile = {
   longitude?: number;
   averageConsultationMinutes: number;
   verificationStatus: "pending" | "approved" | "rejected";
+  paymentStatus?: PaymentStatus;
+  paymentReference?: string;
+  lastPaymentAt?: string;
+  approvedAt?: string;
+  blockedAt?: string;
   createdAt: string;
   updatedAt: string;
 };

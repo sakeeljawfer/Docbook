@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       phone: input.phone,
       email: input.email || undefined,
       passwordHash: await bcrypt.hash(input.password, 10),
-      status: "active" as const,
+      status: input.role === "doctor" ? "pending" as const : "active" as const,
       createdAt: now,
       updatedAt: now
     };
@@ -57,6 +57,7 @@ export async function POST(request: Request) {
         city: input.city!,
         averageConsultationMinutes: 10,
         verificationStatus: "pending",
+        paymentStatus: "unpaid",
         createdAt: now,
         updatedAt: now
       });

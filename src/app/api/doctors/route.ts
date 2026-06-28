@@ -8,7 +8,10 @@ export async function GET(request: Request) {
   const query = (searchParams.get("query") ?? "").toLowerCase();
   const db = await readDb();
   const doctors = db.doctorProfiles
-    .filter((doctor) => doctor.verificationStatus === "approved")
+    .filter((doctor) => {
+      const doctorUser = db.users.find((user) => user.id === doctor.userId);
+      return doctor.verificationStatus === "approved" && doctor.paymentStatus === "paid" && doctorUser?.status === "active";
+    })
     .map((doctor) => {
       const specialization = db.specializations.find((item) => item.id === doctor.specializationId)?.name ?? "General";
       const sessions = db.doctorSessions.filter((item) => item.doctorId === doctor.id && item.isActive);

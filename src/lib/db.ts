@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Appointment, Database, Notification, QueueSession } from "./types";
+import type { Appointment, Database, Notification, PaymentStatus, QueueSession } from "./types";
 import { createSeedData } from "./seed";
 
 const dataDir = process.env.VERCEL ? "/tmp/docbook" : path.join(process.cwd(), "src", "data");
@@ -17,7 +17,29 @@ async function ensureDb() {
 
 export async function readDb(): Promise<Database> {
   await ensureDb();
-  return JSON.parse(await readFile(dbPath, "utf8")) as Database;
+  return normalizeDb(JSON.parse(await readFile(dbPath, "utf8")) as Database);
+}
+
+function normalizeDb(db: Database): Database {
+  const demoPaymentStatuses: PaymentStatus[] = ["paid", "unpaid", "overdue"];
+  db.doctorProfiles.forEach((doctor, index) => {
+    if (!doctor.paymentStatus) {
+      doctor.paymentStatus = doctor.verificationStatus === "approved" ? demoPaymentStatuses[index] ?? "paid" : "unpaid";
+    }
+
+    if (doctor.paymentStatus === "paid") {
+      if (!doctor.paymentReference) doctor.paymentReference = `PAY-${String(1001 + index)}`;
+      if (!doctor.lastPaymentAt) doctor.lastPaymentAt = doctor.updatedAt;
+      if (!doctor.approvedAt && doctor.verificationStatus === "approved") doctor.approvedAt = doctor.updatedAt;
+    }
+
+    if (doctor.paymentStatus === "overdue") {
+      if (!doctor.blockedAt) doctor.blockedAt = doctor.updatedAt;
+      const doctorUser = db.users.find((user) => user.id === doctor.userId);
+      if (doctorUser?.status === "active") doctorUser.status = "blocked";
+    }
+  });
+  return db;
 }
 
 export async function writeDb(db: Database) {

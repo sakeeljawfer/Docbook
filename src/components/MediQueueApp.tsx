@@ -1,10 +1,33 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  ArrowRightOutlined,
+  BellOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CreditCardOutlined,
+  DashboardOutlined,
+  FileTextOutlined,
+  HomeOutlined,
+  LoginOutlined,
+  LogoutOutlined,
+  MedicineBoxOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  StopOutlined,
+  TeamOutlined,
+  UnlockOutlined,
+  UserOutlined
+} from "@ant-design/icons";
+import { App as AntApp, Button, Card, ConfigProvider, Empty, Input, Layout, Select, Skeleton, Space, Statistic, Tag, theme } from "antd";
 
-type User = { id: string; role: "patient" | "doctor" | "admin"; name: string; phone: string; email?: string };
+type PaymentStatus = "paid" | "unpaid" | "overdue";
+type User = { id: string; role: "patient" | "doctor" | "admin"; name: string; phone: string; email?: string; status?: string };
 type Doctor = {
   id: string;
+  userId?: string;
   doctorName: string;
   clinicName: string;
   specialization: string;
@@ -16,6 +39,15 @@ type Doctor = {
   currentQueueNumber: string;
   queueStatus: string;
   totalWaiting: number;
+  verificationStatus?: "pending" | "approved" | "rejected";
+  paymentStatus?: PaymentStatus;
+  paymentReference?: string;
+  lastPaymentAt?: string;
+  approvedAt?: string;
+  blockedAt?: string;
+  doctorPhone?: string;
+  doctorEmail?: string;
+  userStatus?: string;
   sessions: Array<{ id: string; sessionName: string; startTime: string; endTime: string; maxPatients: number }>;
 };
 type Appointment = {
@@ -46,6 +78,13 @@ type PublicBoard = {
   lastUpdatedAt: string;
   status: string;
 };
+type AdminPayload = {
+  summary?: Record<string, number>;
+  doctors?: Doctor[];
+  patients?: User[];
+  appointments?: Appointment[];
+};
+type AdminDoctorAction = "approve-payment" | "block-unpaid" | "unblock" | "reject";
 type View =
   | "home"
   | "doctors"
@@ -63,9 +102,12 @@ type View =
   | "patient-dashboard"
   | "doctor-dashboard"
   | "admin-dashboard";
+type Portal = "all" | "patient" | "doctor" | "admin";
 
+const initialViewForPortal = (portal: Portal): View => portal === "doctor" ? "doctor-dashboard" : portal === "admin" ? "admin-dashboard" : portal === "patient" ? "doctors" : "home";
 const today = () => new Date().toISOString().slice(0, 10);
 const statusClass = (status?: string) => `status status-${(status ?? "confirmed").replace(/\s+/g, "-")}`;
+const readable = (value: string) => value.replace(/-/g, " ").replace(/[A-Z]/g, " $&").trim();
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -77,13 +119,14 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return data as T;
 }
 
-export default function MediQueueApp() {
-  const [view, setView] = useState<View>("home");
+export default function MediQueueApp({ portal = "all" }: { portal?: Portal }) {
+  const [view, setView] = useState<View>(initialViewForPortal(portal));
   const [user, setUser] = useState<User | null>(null);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [query, setQuery] = useState("");
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
   const [location, setLocation] = useState("all");
   const [specialization, setSpecialization] = useState("all");
   const [availability, setAvailability] = useState("today");
@@ -91,7 +134,7 @@ export default function MediQueueApp() {
   const [message, setMessage] = useState("");
   const [doctorQueue, setDoctorQueue] = useState<{ doctor?: Doctor; appointments: Appointment[]; queues: Array<{ sessionId: string; status: string; currentQueueNumber?: string }> }>({ appointments: [], queues: [] });
   const [board, setBoard] = useState<PublicBoard | null>(null);
-  const [admin, setAdmin] = useState<Record<string, unknown> | null>(null);
+  const [admin, setAdmin] = useState<AdminPayload | null>(null);
 
   const selectedDoctor = useMemo(() => doctors.find((doctor) => doctor.id === selectedDoctorId) ?? doctors[0], [doctors, selectedDoctorId]);
   const filteredDoctors = useMemo(() => doctors.filter((doctor) => {
@@ -103,12 +146,21 @@ export default function MediQueueApp() {
   const cities = Array.from(new Set(doctors.map((doctor) => doctor.city)));
   const specializations = Array.from(new Set(doctors.map((doctor) => doctor.specialization)));
 
+  async function loadDoctors(search = query) {
+    setLoadingDoctors(true);
+    try {
+      const doctorData = await api<{ doctors: Doctor[] }>("/api/doctors?query=" + encodeURIComponent(search));
+      setDoctors(doctorData.doctors);
+      setSelectedDoctorId((current) => current || doctorData.doctors[0]?.id || "");
+    } finally {
+      setLoadingDoctors(false);
+    }
+  }
+
   async function refresh() {
     const me = await api<{ user: User | null }>("/api/auth/me");
     setUser(me.user);
-    const doctorData = await api<{ doctors: Doctor[] }>("/api/doctors?query=" + encodeURIComponent(query));
-    setDoctors(doctorData.doctors);
-    if (!selectedDoctorId && doctorData.doctors[0]) setSelectedDoctorId(doctorData.doctors[0].id);
+    await loadDoctors();
     if (me.user) {
       const [apptData, notificationData] = await Promise.all([
         api<{ appointments: Appointment[] }>("/api/appointments"),
@@ -120,7 +172,7 @@ export default function MediQueueApp() {
         setDoctorQueue(await api<typeof doctorQueue>("/api/doctor/queue/status"));
       }
       if (me.user.role === "admin") {
-        setAdmin(await api<Record<string, unknown>>("/api/admin/summary"));
+        setAdmin(await api<AdminPayload>("/api/admin/summary"));
       }
     }
   }
@@ -131,12 +183,7 @@ export default function MediQueueApp() {
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
-      api<{ doctors: Doctor[] }>("/api/doctors?query=" + encodeURIComponent(query))
-        .then((data) => {
-          setDoctors(data.doctors);
-          if (!selectedDoctorId && data.doctors[0]) setSelectedDoctorId(data.doctors[0].id);
-        })
-        .catch((error) => setMessage(error.message));
+      loadDoctors(query).catch((error) => setMessage(error.message));
     }, 250);
     return () => window.clearTimeout(handle);
   }, [query]);
@@ -163,7 +210,7 @@ export default function MediQueueApp() {
   async function handleRegister(event: FormEvent<HTMLFormElement>, role: "patient" | "doctor") {
     event.preventDefault();
     await api("/api/auth/register", { method: "POST", body: JSON.stringify({ ...Object.fromEntries(new FormData(event.currentTarget)), role }) });
-    setMessage(role === "doctor" ? "Doctor profile submitted. Please sign in to continue." : "Patient account created. Please sign in.");
+    setMessage(role === "doctor" ? "Doctor profile submitted. Admin approval and payment confirmation are required before dashboard access." : "Patient account created. Please sign in.");
     setView(role === "doctor" ? "doctor-login" : "patient-login");
   }
 
@@ -174,7 +221,7 @@ export default function MediQueueApp() {
     setNotifications([]);
     setDoctorQueue({ appointments: [], queues: [] });
     setAdmin(null);
-    setView("home");
+    setView(initialViewForPortal(portal));
   }
 
   async function book(event: FormEvent<HTMLFormElement>) {
@@ -217,13 +264,33 @@ export default function MediQueueApp() {
     await refresh();
   }
 
+  async function adminDoctorAction(doctorId: string, action: AdminDoctorAction) {
+    await api("/api/admin/doctors", { method: "PATCH", body: JSON.stringify({ doctorId, action }) });
+    setMessage(action === "approve-payment" ? "Doctor payment approved and account activated." : action === "block-unpaid" ? "Doctor blocked for unpaid subscription." : action === "reject" ? "Doctor profile rejected and blocked." : "Doctor account unblocked.");
+    await refresh();
+  }
+
   return (
-    <>
-      <Header view={view} user={user} setView={setView} logout={logout} />
-      {message && <button className="toast" onClick={() => setMessage("")}>{message}</button>}
-      <main>
-        {view === "home" && <Home doctors={doctors} query={query} setQuery={setQuery} setView={setView} selectDoctor={setSelectedDoctorId} board={board} />}
-        {view === "doctors" && <FindDoctors doctors={filteredDoctors} cities={cities} specializations={specializations} query={query} setQuery={setQuery} location={location} setLocation={setLocation} specialization={specialization} setSpecialization={setSpecialization} availability={availability} setAvailability={setAvailability} setView={setView} selectDoctor={setSelectedDoctorId} />}
+    <ConfigProvider
+      theme={{
+        algorithm: theme.defaultAlgorithm,
+        token: {
+          borderRadius: 8,
+          colorPrimary: portal === "doctor" ? "#1f5fbf" : portal === "admin" ? "#4f46a5" : "#0f8c7c",
+          colorInfo: "#1f5fbf",
+          colorSuccess: "#16845f",
+          fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+        }
+      }}
+    >
+      <AntApp>
+        <Layout className={`app-shell portal-${portal}`}>
+          <Header portal={portal} view={view} user={user} setView={setView} logout={logout} />
+          {message && <button className="toast" onClick={() => setMessage("")}>{message}</button>}
+          <Layout.Content>
+            <main>
+              {view === "home" && <Home portal={portal} doctors={doctors} loadingDoctors={loadingDoctors} query={query} setQuery={setQuery} setView={setView} selectDoctor={setSelectedDoctorId} board={board} />}
+        {view === "doctors" && <FindDoctors doctors={filteredDoctors} loadingDoctors={loadingDoctors} cities={cities} specializations={specializations} query={query} setQuery={setQuery} location={location} setLocation={setLocation} specialization={specialization} setSpecialization={setSpecialization} availability={availability} setAvailability={setAvailability} setView={setView} selectDoctor={setSelectedDoctorId} />}
         {view === "profile" && selectedDoctor && <DoctorProfile doctor={selectedDoctor} setView={setView} />}
         {view === "book" && selectedDoctor && <BookingFlow doctor={selectedDoctor} onBook={book} user={user} setView={setView} />}
         {view === "queue" && <PublicQueue board={board} />}
@@ -237,38 +304,69 @@ export default function MediQueueApp() {
         {view === "forgot" && <InfoPage title="Forgot password" text="Password reset is prepared for future SMS/email integration. Please contact the clinic administrator for this MVP." />}
         {view === "patient-dashboard" && <PatientDashboard user={user} appointments={appointments} notifications={notifications} setView={setView} board={board} onAppointmentAction={appointmentAction} />}
         {view === "doctor-dashboard" && <DoctorDashboard user={user} data={doctorQueue} onAction={queueAction} onControl={queueControl} onAppointmentAction={appointmentAction} onWalkIn={addWalkIn} setView={setView} />}
-        {view === "admin-dashboard" && <AdminDashboard user={user} admin={admin} setView={setView} />}
-      </main>
-      {user?.role === "patient" && <MobilePatientNav setView={setView} />}
-    </>
+        {view === "admin-dashboard" && <AdminDashboard user={user} admin={admin} setView={setView} onDoctorAction={adminDoctorAction} />}
+            </main>
+          </Layout.Content>
+          {user?.role === "patient" && portal !== "doctor" && <MobilePatientNav setView={setView} />}
+        </Layout>
+      </AntApp>
+    </ConfigProvider>
   );
 }
 
-function Header({ view, user, setView, logout }: { view: View; user: User | null; setView: (view: View) => void; logout: () => void }) {
+function Header({ portal, view, user, setView, logout }: { portal: Portal; view: View; user: User | null; setView: (view: View) => void; logout: () => void }) {
+  const dashboardView = user?.role === "doctor" ? "doctor-dashboard" : user?.role === "admin" ? "admin-dashboard" : "patient-dashboard";
+  const isDoctorPortal = portal === "doctor";
+  const isAdminPortal = portal === "admin";
+  const portalLabel = isDoctorPortal ? "Doctor" : isAdminPortal ? "Admin" : portal === "patient" ? "Patient" : "";
   return (
-    <header className="site-header">
+    <Layout.Header className="site-header">
       <div className="header-main">
-        <button className="logo" onClick={() => setView("home")}><LogoMark />DocBook</button>
+        <button className="logo" onClick={() => setView(initialViewForPortal(portal))}><LogoMark />DocBook <span>{portalLabel}</span></button>
         <div className="header-actions">
           {user ? (
-            <>
-              <button className="soft" onClick={() => setView(user.role === "doctor" ? "doctor-dashboard" : user.role === "admin" ? "admin-dashboard" : "patient-dashboard")}>{user.name}</button>
-              <button onClick={logout}>Logout</button>
-            </>
+            <Space size={8}>
+              <Button icon={<UserOutlined />} onClick={() => setView(dashboardView)}>{user.name}</Button>
+              <Button icon={<LogoutOutlined />} onClick={logout}>Logout</Button>
+            </Space>
           ) : (
-            <>
-              <button onClick={() => setView("patient-login")}>Login</button>
-              <button className="primary small" onClick={() => setView("patient-register")}>Book</button>
-            </>
+            <Space size={8}>
+              {isAdminPortal ? (
+                <Button type="primary" icon={<DashboardOutlined />} onClick={() => setView("admin-login")}>Admin Login</Button>
+              ) : isDoctorPortal ? (
+                <Button type="primary" icon={<MedicineBoxOutlined />} onClick={() => setView("doctor-login")}>Doctor Login</Button>
+              ) : (
+                <>
+                  <Button icon={<LoginOutlined />} onClick={() => setView("patient-login")}>Patient Login</Button>
+                  <Button type="primary" icon={<CalendarOutlined />} onClick={() => setView("patient-register")}>Book</Button>
+                </>
+              )}
+            </Space>
           )}
         </div>
       </div>
       <nav className="public-nav">
-        <button className={view === "doctors" ? "active" : ""} onClick={() => setView("doctors")}>Find a Doctor</button>
-        <button className={view === "queue" ? "active" : ""} onClick={() => setView("queue")}>Current Queue</button>
-        <button onClick={() => setView("doctor-login")}>Doctor Desk</button>
+        {isAdminPortal ? (
+          <>
+            <Button type={view === "admin-dashboard" ? "primary" : "text"} icon={<DashboardOutlined />} onClick={() => setView("admin-dashboard")}>Admin Desk</Button>
+            <Button type="text" icon={<CreditCardOutlined />} onClick={() => setView(user?.role === "admin" ? "admin-dashboard" : "admin-login")}>Doctor Payments</Button>
+            <Button type="text" icon={<UserOutlined />} onClick={() => setView(user?.role === "admin" ? "admin-dashboard" : "admin-login")}>Patients</Button>
+            <Button type="text" icon={<MedicineBoxOutlined />} href="/doctors">Doctor Portal</Button>
+            <Button type="text" icon={<CalendarOutlined />} href="/patients">Patient App</Button>
+          </>
+        ) : isDoctorPortal ? (
+          <>
+            <Button type={view === "doctor-dashboard" ? "primary" : "text"} icon={<TeamOutlined />} onClick={() => setView("doctor-dashboard")}>Queue Desk</Button>
+            <Button type={view === "doctor-register" ? "primary" : "text"} icon={<PlusOutlined />} onClick={() => setView("doctor-register")}>Register Clinic</Button>
+          </>
+        ) : (
+          <>
+            <Button type={view === "doctors" ? "primary" : "text"} icon={<SearchOutlined />} onClick={() => setView("doctors")}>Find a Doctor</Button>
+            <Button type={view === "queue" ? "primary" : "text"} icon={<ClockCircleOutlined />} onClick={() => setView("queue")}>Current Queue</Button>
+          </>
+        )}
       </nav>
-    </header>
+    </Layout.Header>
   );
 }
 
@@ -282,17 +380,19 @@ function LogoMark() {
   );
 }
 
-function Home({ doctors, query, setQuery, setView, selectDoctor, board }: { doctors: Doctor[]; query: string; setQuery: (query: string) => void; setView: (view: View) => void; selectDoctor: (id: string) => void; board: PublicBoard | null }) {
+function Home({ portal, doctors, loadingDoctors, query, setQuery, setView, selectDoctor, board }: { portal: Portal; doctors: Doctor[]; loadingDoctors: boolean; query: string; setQuery: (query: string) => void; setView: (view: View) => void; selectDoctor: (id: string) => void; board: PublicBoard | null }) {
+  if (portal === "all") return <RoleGateway board={board} setView={setView} />;
+
   return (
     <>
       <section className="clinic-hero">
-        <div className="patient-panel">
-          <span className="eyebrow">For local dispensary patients</span>
+        <Card className="patient-panel" variant="borderless">
+          <span className="eyebrow">Patient web app</span>
           <h1>Book your doctor and see the current queue number.</h1>
           <p>No guessing at the clinic. Choose a local doctor, book a morning or evening session, get your queue number, and track who is being served now.</p>
           <div className="hero-search">
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search doctor, dispensary, city, or specialization" />
-            <button className="primary" onClick={() => setView("doctors")}>Find Doctor</button>
+            <Input size="large" prefix={<SearchOutlined />} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search doctor, dispensary, city, or specialization" />
+            <Button type="primary" size="large" icon={<SearchOutlined />} onClick={() => setView("doctors")}>Find Doctor</Button>
           </div>
           <div className="patient-steps">
             <span><b>1</b>Find doctor</span>
@@ -300,48 +400,104 @@ function Home({ doctors, query, setQuery, setView, selectDoctor, board }: { doct
             <span><b>3</b>Get queue number</span>
             <span><b>4</b>Track current queue</span>
           </div>
-        </div>
-        <div className="queue-preview">
+        </Card>
+        <Card className="queue-preview" variant="borderless">
           <div className="queue-preview-top">
             <div>
               <p>{board?.clinicName ?? "Lotus Family Clinic"}</p>
               <small>{board?.doctorName ?? "Dr. Amara Perera"}</small>
             </div>
-            <span className={statusClass(board?.status ?? "running")}>{board?.status?.replace("_", " ") ?? "running"}</span>
+            <Tag color="success">{board?.status?.replace("_", " ") ?? "running"}</Tag>
           </div>
           <div className="queue-preview-current">
             <span>Current queue</span>
             <strong>{board?.currentQueueNumber ?? "M001"}</strong>
           </div>
           <div className="queue-preview-grid">
-            <span>Next<b>{board?.nextQueueNumber ?? "M002"}</b></span>
-            <span>Waiting<b>{board?.totalWaiting ?? 3}</b></span>
-            <span>Delay<b>{board?.estimatedDelay ?? 14}m</b></span>
+            <Statistic title="Next" value={board?.nextQueueNumber ?? "M002"} />
+            <Statistic title="Waiting" value={board?.totalWaiting ?? 3} />
+            <Statistic title="Delay" value={board?.estimatedDelay ?? 14} suffix="m" />
           </div>
-          <button onClick={() => setView("queue")}>Open Live Queue Board</button>
-        </div>
+          <Button icon={<ClockCircleOutlined />} onClick={() => setView("queue")}>Open Live Queue Board</Button>
+        </Card>
       </section>
       <section className="core-actions">
-        <button className="primary" onClick={() => setView("doctors")}>Book Appointment</button>
-        <button onClick={() => setView("patient-login")}>Track My Appointment</button>
-        <button onClick={() => setView("doctor-login")}>Doctor Queue Desk</button>
+        <Button type="primary" size="large" icon={<CalendarOutlined />} onClick={() => setView("doctors")}>Book Appointment</Button>
+        <Button size="large" icon={<BellOutlined />} onClick={() => setView("patient-login")}>Track My Appointment</Button>
+        <Button size="large" icon={<MedicineBoxOutlined />} href="/doctors">Doctor Queue Desk</Button>
       </section>
       <section className="section-block">
         <div className="section-title">
           <span className="eyebrow">Available today</span>
           <h2>Local doctors and dispensaries</h2>
         </div>
-        <div className="doctor-grid">
-          {doctors.slice(0, 3).map((doctor) => <DoctorCard key={doctor.id} doctor={doctor} setView={setView} selectDoctor={selectDoctor} />)}
+        <DoctorResults doctors={doctors.slice(0, 3)} loadingDoctors={loadingDoctors} setView={setView} selectDoctor={selectDoctor} emptyDescription="Doctors will appear here as clinics are available." />
+      </section>
+      <Footer portal={portal} setView={setView} />
+    </>
+  );
+}
+
+function RoleGateway({ board, setView }: { board: PublicBoard | null; setView: (view: View) => void }) {
+  return (
+    <>
+      <section className="role-gateway">
+        <div className="role-gateway-copy">
+          <span className="eyebrow">DocBook web apps</span>
+          <h1>One booking product, two focused workspaces.</h1>
+          <p>Patients need fast booking and queue confidence. Doctors need a calm desk for live sessions, walk-ins, and patient flow.</p>
+          <div className="gateway-stats">
+            <Statistic title="Patient steps" value={4} />
+            <Statistic title="Live queue sync" value="3.5s" />
+            <Statistic title="Clinic roles" value={2} />
+          </div>
+        </div>
+        <div className="role-card-grid">
+          <Card className="role-card" variant="borderless">
+            <span className="role-icon patient"><UserOutlined /></span>
+            <h2>Patient App</h2>
+            <p>Find doctors, book a session, and track the queue number from the same place.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Book appointment</span>
+              <span><CheckCircleOutlined /> Track current queue</span>
+              <span><CheckCircleOutlined /> Review notifications</span>
+            </div>
+            <Button type="primary" size="large" href="/patients" icon={<ArrowRightOutlined />}>Open Patient App</Button>
+          </Card>
+          <Card className="role-card doctor" variant="borderless">
+            <span className="role-icon doctor"><MedicineBoxOutlined /></span>
+            <h2>Doctor App</h2>
+            <p>Run today’s queue, call the next patient, add walk-ins, and keep the board current.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Start session</span>
+              <span><CheckCircleOutlined /> Add walk-ins</span>
+              <span><CheckCircleOutlined /> Complete visits</span>
+            </div>
+            <Button type="primary" size="large" href="/doctors" icon={<ArrowRightOutlined />}>Open Doctor App</Button>
+          </Card>
         </div>
       </section>
-      <Footer setView={setView} />
+      <section className="gateway-queue-strip">
+        <div>
+          <span className="eyebrow">Public queue board</span>
+          <h2>{board?.clinicName ?? "Live queue preview"}</h2>
+          <p>{board?.doctorName ?? "Select any doctor to show the public queue board."}</p>
+        </div>
+        <div className="gateway-queue-numbers">
+          <Statistic title="Now serving" value={board?.currentQueueNumber ?? "M001"} />
+          <Statistic title="Next" value={board?.nextQueueNumber ?? "M002"} />
+          <Statistic title="Waiting" value={board?.totalWaiting ?? 3} />
+        </div>
+        <Button icon={<ClockCircleOutlined />} onClick={() => setView("queue")}>View Queue Board</Button>
+      </section>
+      <Footer portal="all" setView={setView} />
     </>
   );
 }
 
 function FindDoctors(props: {
   doctors: Doctor[];
+  loadingDoctors: boolean;
   cities: string[];
   specializations: string[];
   query: string;
@@ -355,31 +511,71 @@ function FindDoctors(props: {
   setView: (view: View) => void;
   selectDoctor: (id: string) => void;
 }) {
+  const hasFilters = props.query || props.location !== "all" || props.specialization !== "all" || props.availability !== "today";
+  const clearFilters = () => {
+    props.setQuery("");
+    props.setLocation("all");
+    props.setSpecialization("all");
+    props.setAvailability("today");
+  };
+
   return (
     <section className="page-shell">
-      <div className="section-title">
-        <span className="eyebrow">Find a local doctor</span>
-        <h1>Choose a dispensary and book your queue number</h1>
+      <div className="section-title patient-launch-title">
+        <span className="eyebrow">Patient booking portal</span>
+        <h1>Book a doctor, then login to track your queue.</h1>
+        <p>Patients can search clinics, choose a session, create an account, and follow their current queue number.</p>
+        <div className="patient-launch-actions">
+          <Button type="primary" icon={<SearchOutlined />} onClick={() => props.setQuery("")}>Find available doctors</Button>
+          <Button icon={<LoginOutlined />} onClick={() => props.setView("patient-login")}>Patient Login</Button>
+          <Button icon={<PlusOutlined />} onClick={() => props.setView("patient-register")}>Create Account</Button>
+        </div>
       </div>
       <div className="filter-bar">
-        <input value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Doctor, clinic, city, specialization" />
-        <select value={props.location} onChange={(event) => props.setLocation(event.target.value)}>
-          <option value="all">All locations</option>
-          {props.cities.map((city) => <option key={city}>{city}</option>)}
-        </select>
-        <select value={props.specialization} onChange={(event) => props.setSpecialization(event.target.value)}>
-          <option value="all">All specializations</option>
-          {props.specializations.map((item) => <option key={item}>{item}</option>)}
-        </select>
-        <select value={props.availability} onChange={(event) => props.setAvailability(event.target.value)}>
-          <option value="today">Has sessions today</option>
-          <option value="all">Any availability</option>
-        </select>
+        <Input size="large" prefix={<SearchOutlined />} value={props.query} onChange={(event) => props.setQuery(event.target.value)} placeholder="Doctor, clinic, city, specialization" />
+        <Select size="large" value={props.location} onChange={props.setLocation} options={[{ value: "all", label: "All locations" }, ...props.cities.map((city) => ({ value: city, label: city }))]} />
+        <Select size="large" value={props.specialization} onChange={props.setSpecialization} options={[{ value: "all", label: "All specializations" }, ...props.specializations.map((item) => ({ value: item, label: item }))]} />
+        <Select size="large" value={props.availability} onChange={props.setAvailability} options={[{ value: "today", label: "Has sessions today" }, { value: "all", label: "Any availability" }]} />
       </div>
-      <div className="doctor-grid">
-        {props.doctors.map((doctor) => <DoctorCard key={doctor.id} doctor={doctor} setView={props.setView} selectDoctor={props.selectDoctor} />)}
-      </div>
+      <DoctorResults
+        doctors={props.doctors}
+        loadingDoctors={props.loadingDoctors}
+        setView={props.setView}
+        selectDoctor={props.selectDoctor}
+        emptyDescription={hasFilters ? "No doctors match these filters yet." : "No doctors are available yet."}
+        emptyAction={hasFilters ? clearFilters : undefined}
+        emptyActionText="Clear filters"
+      />
     </section>
+  );
+}
+
+function DoctorResults({ doctors, loadingDoctors, setView, selectDoctor, emptyDescription, emptyAction, emptyActionText }: { doctors: Doctor[]; loadingDoctors: boolean; setView: (view: View) => void; selectDoctor: (id: string) => void; emptyDescription: string; emptyAction?: () => void; emptyActionText?: string }) {
+  if (loadingDoctors) {
+    return (
+      <div className="doctor-grid">
+        {[0, 1, 2].map((item) => (
+          <Card key={item} className="doctor-card-pro doctor-card-skeleton" variant="borderless">
+            <Skeleton active avatar paragraph={{ rows: 4 }} />
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (doctors.length === 0) {
+    return (
+      <Card className="empty-results" variant="borderless">
+        <Empty description={emptyDescription} />
+        {emptyAction && <Button type="primary" onClick={emptyAction}>{emptyActionText ?? "Reset"}</Button>}
+      </Card>
+    );
+  }
+
+  return (
+    <div className="doctor-grid">
+      {doctors.map((doctor) => <DoctorCard key={doctor.id} doctor={doctor} setView={setView} selectDoctor={selectDoctor} />)}
+    </div>
   );
 }
 
@@ -388,15 +584,18 @@ function DoctorCard({ doctor, setView, selectDoctor }: { doctor: Doctor; setView
     selectDoctor(doctor.id);
     setView(view);
   };
+  const nextSession = doctor.sessions[0];
+  const estimatedDelay = doctor.totalWaiting * doctor.averageConsultationMinutes;
+
   return (
-    <article className="doctor-card-pro">
+    <Card className="doctor-card-pro" variant="borderless">
       <div className="doctor-card-head">
         <span className="avatar">{doctor.doctorName.split(" ").slice(-1)[0]?.[0] ?? "D"}</span>
         <div>
           <h3>{doctor.doctorName}</h3>
           <p>{doctor.clinicName}</p>
         </div>
-        <span className={statusClass(doctor.queueStatus)}>{doctor.queueStatus.replace("_", " ")}</span>
+        <Tag color={doctor.queueStatus === "running" ? "success" : doctor.queueStatus === "paused" ? "purple" : "blue"}>{doctor.queueStatus.replace("_", " ")}</Tag>
       </div>
       <div className="doctor-meta">
         <span><b>{doctor.specialization}</b>Specialization</span>
@@ -404,11 +603,15 @@ function DoctorCard({ doctor, setView, selectDoctor }: { doctor: Doctor; setView
         <span><b>{doctor.consultationFee ? `LKR ${doctor.consultationFee}` : "On visit"}</b>Fee</span>
         <span><b>{doctor.totalWaiting}</b>Patients waiting</span>
       </div>
-      <div className="card-actions">
-        <button onClick={() => choose("profile")}>View Profile</button>
-        <button className="primary" onClick={() => choose("book")}>Book Queue Number</button>
+      <div className="doctor-card-schedule">
+        <span><ClockCircleOutlined /> {nextSession ? `${nextSession.sessionName} ${nextSession.startTime}-${nextSession.endTime}` : "Sessions updating"}</span>
+        <span>Approx delay <b>{estimatedDelay} min</b></span>
       </div>
-    </article>
+      <div className="card-actions">
+        <Button onClick={() => choose("profile")}>View Profile</Button>
+        <Button type="primary" icon={<CalendarOutlined />} onClick={() => choose("book")}>Book Queue Number</Button>
+      </div>
+    </Card>
   );
 }
 
@@ -462,14 +665,28 @@ function BookingFlow({ doctor, onBook, user, setView }: { doctor: Doctor; onBook
 }
 
 function LoginPage({ role, heading, defaultPhone, onSubmit, setView }: { role: "patient" | "doctor" | "admin"; heading: string; defaultPhone: string; onSubmit: (event: FormEvent<HTMLFormElement>) => void; setView: (view: View) => void }) {
+  const points = role === "doctor"
+    ? ["Call the next patient", "Pause or resume sessions", "Add walk-ins quickly"]
+    : role === "patient"
+      ? ["See booking status", "Track current queue", "Get appointment updates"]
+      : ["Review platform activity", "Manage clinic approvals", "Monitor active queues"];
+
   return (
     <section className="auth-layout">
       <div className="auth-copy">
         <span className="eyebrow">{role} access</span>
         <h1>{heading}</h1>
-        <p>Use the seeded demo account or your registered account to continue.</p>
+        <p>{role === "doctor" ? "Manage today’s appointments from one focused queue desk." : role === "patient" ? "Continue to your bookings, queue status, and notifications." : "Access platform operations and clinic management."}</p>
+        <div className="auth-points">
+          {points.map((point) => <span key={point}><CheckCircleOutlined /> {point}</span>)}
+        </div>
       </div>
       <form className="auth-card" onSubmit={onSubmit}>
+        <div className="demo-access">
+          <span>Demo account</span>
+          <b>{defaultPhone}</b>
+          <small>Password: password123</small>
+        </div>
         <label>{role === "admin" ? "Email or phone" : role === "doctor" ? "Phone or email" : "Phone number"}<input name="phone" defaultValue={defaultPhone} required /></label>
         <label>Password<input name="password" type="password" defaultValue="password123" minLength={6} required /></label>
         <button className="primary large">Login</button>
@@ -529,15 +746,27 @@ function PatientDashboard({ user, appointments, notifications, setView, board, o
 }
 
 function DoctorDashboard({ user, data, onAction, onControl, onAppointmentAction, onWalkIn, setView }: { user: User | null; data: { appointments: Appointment[]; queues: Array<{ sessionId: string; status: string; currentQueueNumber?: string }> }; onAction: (action: "start" | "next", sessionId: string) => void; onControl: (action: "pause" | "resume" | "end", sessionId: string) => void; onAppointmentAction: (appointmentId: string, action: "complete" | "no-show") => void; onWalkIn: (event: FormEvent<HTMLFormElement>) => void; setView: (view: View) => void }) {
-  if (user?.role !== "doctor") return <EmptyAccess title="Doctor Dashboard" text="Please login as a doctor to manage today’s queue." action={() => setView("doctor-login")} />;
+  if (user?.role !== "doctor") return <DoctorPortalAccess setView={setView} />;
   const sessionId = data.appointments[0]?.sessionId;
   const current = data.appointments.find((item) => item.status === "current");
   const next = data.appointments.find((item) => item.status === "waiting" || item.status === "confirmed");
   const completed = data.appointments.filter((item) => item.status === "completed").length;
   const noShows = data.appointments.filter((item) => item.status === "no-show").length;
   const currentQueue = data.queues.find((item) => item.sessionId === sessionId);
+  const waiting = data.appointments.filter((item) => item.status === "waiting" || item.status === "confirmed").length;
   return (
-    <DashboardShell title="Doctor Queue Desk" nav={["Today’s Queue", "Appointments", "Sessions", "Walk-in"]}>
+    <DashboardShell title="Clinic Dashboard" nav={["Overview", "Today’s Queue", "Patients", "Walk-in", "Sessions"]}>
+      <section className="doctor-portal-brief">
+        <div>
+          <span className="eyebrow">Doctor workspace</span>
+          <h2>Maintain patients, bookings, and the live queue from one place.</h2>
+          <p className="muted">This is the operational dashboard we can give each clinic after onboarding.</p>
+        </div>
+        <div className="doctor-portal-actions">
+          <Button icon={<FileTextOutlined />}>Patient records</Button>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!sessionId}>Add patient</Button>
+        </div>
+      </section>
       <div className="doctor-command">
         <div className="current-patient card">
           <span className="eyebrow">Current patient</span>
@@ -558,40 +787,248 @@ function DoctorDashboard({ user, data, onAction, onControl, onAppointmentAction,
       </div>
       <div className="metric-row">
         <Metric label="Total appointments" value={data.appointments.length} />
-        <Metric label="Waiting" value={data.appointments.filter((item) => item.status === "waiting" || item.status === "confirmed").length} />
+        <Metric label="Waiting" value={waiting} />
         <Metric label="Completed" value={completed} />
         <Metric label="No-show" value={noShows} />
       </div>
+      <DoctorPatientPanel appointments={data.appointments} />
       <WalkInForm sessionId={sessionId} onWalkIn={onWalkIn} />
       <QueueTable appointments={data.appointments} onAppointmentAction={onAppointmentAction} />
     </DashboardShell>
   );
 }
 
-function AdminDashboard({ user, admin, setView }: { user: User | null; admin: Record<string, unknown> | null; setView: (view: View) => void }) {
-  if (user?.role !== "admin") return <EmptyAccess title="Admin Dashboard" text="Please login as admin to manage platform data." action={() => setView("admin-login")} />;
-  const summary = admin?.summary as Record<string, number> | undefined;
+function DoctorPortalAccess({ setView }: { setView: (view: View) => void }) {
   return (
-    <DashboardShell title="Admin Dashboard" nav={["Overview", "Doctors", "Patients", "Appointments", "Specializations", "Locations", "Reports", "Settings"]}>
-      <div className="metric-row">
-        {Object.entries(summary ?? {}).map(([key, value]) => <Metric key={key} label={key.replace(/[A-Z]/g, " $&")} value={value} />)}
-        <Metric label="Pending approvals" value={1} />
-        <Metric label="Active queues" value={2} />
+    <section className="doctor-access-shell">
+      <aside className="doctor-access-sidebar">
+        <span className="logo mini"><LogoMark />DocBook Doctor</span>
+        {["Overview", "Patient bookings", "Live queue", "Walk-ins", "Clinic settings"].map((item) => (
+          <Button key={item} type={item === "Overview" ? "primary" : "text"} icon={item.includes("queue") ? <TeamOutlined /> : item.includes("booking") ? <CalendarOutlined /> : <DashboardOutlined />}>{item}</Button>
+        ))}
+      </aside>
+      <div className="doctor-access-main">
+        <section className="doctor-access-hero">
+          <div>
+            <span className="eyebrow">Clinic onboarding portal</span>
+            <h1>Give every doctor a private dashboard to maintain patients.</h1>
+            <p>Doctors can manage bookings, call the next patient, add walk-ins, and keep the public queue board accurate after signing in.</p>
+            <div className="doctor-access-actions">
+              <Button type="primary" size="large" icon={<LoginOutlined />} onClick={() => setView("doctor-login")}>Doctor Login</Button>
+              <Button size="large" icon={<PlusOutlined />} onClick={() => setView("doctor-register")}>Register Clinic</Button>
+            </div>
+          </div>
+          <div className="doctor-access-card">
+            <span>Demo doctor access</span>
+            <b>0771000001</b>
+            <small>Password: password123</small>
+          </div>
+        </section>
+        <div className="metric-row">
+          <Metric label="Queue control" value={4} />
+          <Metric label="Patient actions" value={5} />
+          <Metric label="Clinic sessions" value={2} />
+          <Metric label="Live board" value={1} />
+        </div>
+        <section className="doctor-access-preview">
+          <Card variant="borderless">
+            <h2>Patient maintenance</h2>
+            <p className="muted">View booked patients, walk-ins, phone numbers, status, and visit reason.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Track waiting patients</span>
+              <span><CheckCircleOutlined /> Mark complete or no-show</span>
+              <span><CheckCircleOutlined /> Add walk-ins to today’s session</span>
+            </div>
+          </Card>
+          <Card variant="borderless">
+            <h2>Operational queue desk</h2>
+            <p className="muted">Start, pause, resume, or end a clinic session without leaving the dashboard.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Call the next queue number</span>
+              <span><CheckCircleOutlined /> Sync public queue board</span>
+              <span><CheckCircleOutlined /> Review daily appointment metrics</span>
+            </div>
+          </Card>
+        </section>
       </div>
-      <div className="card"><h2>Management</h2><div className="admin-actions"><button>Approve doctors</button><button>View patients</button><button>View appointments</button><button>Manage specializations</button><button>Manage locations</button><button>Reports</button></div></div>
+    </section>
+  );
+}
+
+function DoctorPatientPanel({ appointments }: { appointments: Appointment[] }) {
+  const activePatients = appointments.filter((item) => ["current", "waiting", "confirmed"].includes(item.status)).slice(0, 4);
+  return (
+    <div className="card doctor-patient-panel">
+      <div>
+        <h2>Patient maintenance</h2>
+        <p className="muted">Active patients from today’s bookings and walk-ins.</p>
+      </div>
+      {activePatients.length === 0 ? <p className="muted">No active patients yet.</p> : activePatients.map((item) => (
+        <div className="patient-maintenance-row" key={item.id}>
+          <b>{item.queueNumber}</b>
+          <span>{item.patientName ?? "Patient"}</span>
+          <span>{item.patientPhone ?? "-"}</span>
+          <span className={statusClass(item.status)}>{item.status}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminDashboard({ user, admin, setView, onDoctorAction }: { user: User | null; admin: AdminPayload | null; setView: (view: View) => void; onDoctorAction: (doctorId: string, action: AdminDoctorAction) => void }) {
+  if (user?.role !== "admin") return <AdminPortalAccess setView={setView} />;
+  const summary = admin?.summary ?? {};
+  const doctors = admin?.doctors ?? [];
+  const patients = admin?.patients ?? [];
+  const paymentColor = (status?: string) => status === "paid" ? "success" : status === "overdue" ? "error" : "warning";
+  const accountColor = (status?: string) => status === "active" ? "success" : status === "blocked" ? "error" : "processing";
+  return (
+    <DashboardShell title="Admin Control Center" nav={["Overview", "Doctor Payments", "Patients", "Approvals", "Reports", "Settings"]}>
+      <section className="admin-command-panel">
+        <div>
+          <span className="eyebrow">Admin operations</span>
+          <h2>Approve paid doctors and block unpaid clinics before patients can book them.</h2>
+          <p className="muted">Patient search only shows doctors who are approved, paid, and active. This dashboard controls those gates.</p>
+        </div>
+        <div className="admin-command-actions">
+          <Button type="primary" icon={<CreditCardOutlined />}>Payment review</Button>
+          <Button icon={<UserOutlined />}>Patient records</Button>
+        </div>
+      </section>
+      <div className="metric-row">
+        <Metric label="Total doctors" value={summary.totalDoctors ?? 0} />
+        <Metric label="Paid doctors" value={summary.paidDoctors ?? 0} />
+        <Metric label="Unpaid doctors" value={summary.unpaidDoctors ?? 0} />
+        <Metric label="Blocked doctors" value={summary.blockedDoctors ?? 0} />
+      </div>
+      <section className="admin-management-grid">
+        <div className="card admin-table-card">
+          <div className="admin-table-title">
+            <div>
+              <h2>Doctor payment approvals</h2>
+              <p className="muted">Control which doctors can operate and appear in patient booking.</p>
+            </div>
+            <Tag color="blue">{summary.pendingApprovals ?? 0} pending</Tag>
+          </div>
+          <div className="admin-doctor-list">
+            {doctors.map((doctor) => (
+              <div className="admin-doctor-row" key={doctor.id}>
+                <div>
+                  <b>{doctor.doctorName}</b>
+                  <span>{doctor.clinicName} · {doctor.specialization ?? doctor.city}</span>
+                  <small>{doctor.doctorPhone ?? "No phone"} · {doctor.doctorEmail ?? "No email"}</small>
+                </div>
+                <div className="admin-status-stack">
+                  <Tag color={paymentColor(doctor.paymentStatus)}>{readable(doctor.paymentStatus ?? "unpaid")}</Tag>
+                  <Tag color={accountColor(doctor.userStatus)}>{readable(doctor.userStatus ?? "pending")}</Tag>
+                  <Tag>{readable(doctor.verificationStatus ?? "pending")}</Tag>
+                </div>
+                <div className="admin-payment-note">
+                  <span>{doctor.paymentReference ?? "No reference"}</span>
+                  <small>{doctor.lastPaymentAt ? new Date(doctor.lastPaymentAt).toLocaleDateString() : "Payment not confirmed"}</small>
+                </div>
+                <div className="admin-action-row">
+                  <Button size="small" type="primary" icon={<CreditCardOutlined />} onClick={() => onDoctorAction(doctor.id, "approve-payment")}>Approve payment</Button>
+                  <Button size="small" danger icon={<StopOutlined />} disabled={doctor.paymentStatus === "paid" || doctor.userStatus === "blocked"} onClick={() => onDoctorAction(doctor.id, "block-unpaid")}>Block unpaid</Button>
+                  <Button size="small" icon={<UnlockOutlined />} disabled={doctor.userStatus !== "blocked"} onClick={() => onDoctorAction(doctor.id, "unblock")}>Unblock</Button>
+                  <Button size="small" danger disabled={doctor.verificationStatus === "rejected"} onClick={() => onDoctorAction(doctor.id, "reject")}>Reject</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card admin-table-card">
+          <div className="admin-table-title">
+            <div>
+              <h2>Patients</h2>
+              <p className="muted">Patients who can book, login, and track queues.</p>
+            </div>
+            <Tag color="success">{summary.totalPatients ?? patients.length} total</Tag>
+          </div>
+          <div className="admin-patient-list">
+            {patients.slice(0, 8).map((patient) => (
+              <div className="admin-patient-row" key={patient.id}>
+                <span className="avatar">{patient.name.slice(0, 1)}</span>
+                <div>
+                  <b>{patient.name}</b>
+                  <small>{patient.phone}</small>
+                </div>
+                <Tag color={accountColor(patient.status)}>{readable(patient.status ?? "active")}</Tag>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </DashboardShell>
+  );
+}
+
+function AdminPortalAccess({ setView }: { setView: (view: View) => void }) {
+  return (
+    <section className="doctor-access-shell admin-access-shell">
+      <aside className="doctor-access-sidebar">
+        <span className="logo mini"><LogoMark />DocBook Admin</span>
+        {["Overview", "Doctor payments", "Patients", "Approvals", "Reports"].map((item) => (
+          <Button key={item} type={item === "Overview" ? "primary" : "text"} icon={item.includes("payment") ? <CreditCardOutlined /> : item.includes("Patient") ? <UserOutlined /> : <DashboardOutlined />}>{item}</Button>
+        ))}
+      </aside>
+      <div className="doctor-access-main">
+        <section className="doctor-access-hero admin-access-hero">
+          <div>
+            <span className="eyebrow">Platform admin portal</span>
+            <h1>Manage doctors, patients, payments, and clinic access.</h1>
+            <p>Admins approve doctors after payment, block unpaid clinics, and keep the patient booking marketplace clean.</p>
+            <div className="doctor-access-actions">
+              <Button type="primary" size="large" icon={<LoginOutlined />} onClick={() => setView("admin-login")}>Admin Login</Button>
+              <Button size="large" icon={<MedicineBoxOutlined />} href="/doctors">Doctor Portal</Button>
+              <Button size="large" icon={<CalendarOutlined />} href="/patients">Patient App</Button>
+            </div>
+          </div>
+          <div className="doctor-access-card">
+            <span>Demo admin access</span>
+            <b>0770000000</b>
+            <small>Password: password123</small>
+          </div>
+        </section>
+        <section className="doctor-access-preview">
+          <Card variant="borderless">
+            <h2>Doctor approval desk</h2>
+            <p className="muted">Approve paid doctors, block unpaid clinics, and reject profiles that should not go live.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Payment approval</span>
+              <span><CheckCircleOutlined /> Account blocking</span>
+              <span><CheckCircleOutlined /> Patient booking visibility</span>
+            </div>
+          </Card>
+          <Card variant="borderless">
+            <h2>Patient oversight</h2>
+            <p className="muted">Review active patient accounts and bookings as the platform grows.</p>
+            <div className="role-checks">
+              <span><CheckCircleOutlined /> Patient records</span>
+              <span><CheckCircleOutlined /> Appointment volume</span>
+              <span><CheckCircleOutlined /> Queue health</span>
+            </div>
+          </Card>
+        </section>
+      </div>
+    </section>
   );
 }
 
 function PublicQueue({ board }: { board: PublicBoard | null }) {
   return (
     <section className="public-queue">
-      <div className="queue-screen">
-        <div className="queue-screen-top"><div><span className="eyebrow">Public Live Queue</span><h1>{board?.clinicName ?? "Select a clinic"}</h1><p>{board?.doctorName ?? "Doctor queue board"}</p></div><span className={statusClass(board?.status)}>{board?.status ?? "not started"}</span></div>
+      <Card className="queue-screen" variant="borderless">
+        <div className="queue-screen-top"><div><span className="eyebrow">Public Live Queue</span><h1>{board?.clinicName ?? "Select a clinic"}</h1><p>{board?.doctorName ?? "Doctor queue board"}</p></div><Tag color={board?.status === "running" ? "success" : "blue"}>{board?.status ?? "not started"}</Tag></div>
         <span className="queue-label">Now serving</span>
         <strong>{board?.currentQueueNumber ?? "-"}</strong>
-        <div className="queue-screen-grid"><span>Next<b>{board?.nextQueueNumber ?? "-"}</b></span><span>Waiting<b>{board?.totalWaiting ?? 0}</b></span><span>Estimated delay<b>{board?.estimatedDelay ?? 0}m</b></span><span>Updated<b>{board ? new Date(board.lastUpdatedAt).toLocaleTimeString() : "-"}</b></span></div>
-      </div>
+        <div className="queue-screen-grid">
+          <Statistic title="Next" value={board?.nextQueueNumber ?? "-"} />
+          <Statistic title="Waiting" value={board?.totalWaiting ?? 0} />
+          <Statistic title="Estimated delay" value={board?.estimatedDelay ?? 0} suffix="m" />
+          <Statistic title="Updated" value={board ? new Date(board.lastUpdatedAt).toLocaleTimeString() : "-"} />
+        </div>
+      </Card>
     </section>
   );
 }
@@ -601,7 +1038,7 @@ function QueueStatusCard({ doctor }: { doctor: Doctor }) {
 }
 
 function DashboardShell({ title, nav, children }: { title: string; nav: string[]; children: React.ReactNode }) {
-  return <section className="dashboard-shell"><aside className="dashboard-sidebar"><span className="logo mini"><LogoMark />DocBook</span>{nav.map((item) => <button key={item}>{item}</button>)}</aside><div className="dashboard-main"><div className="dashboard-title"><h1>{title}</h1><span className="status status-running">Live updates</span></div>{children}</div></section>;
+  return <section className="dashboard-shell"><aside className="dashboard-sidebar"><span className="logo mini"><LogoMark />DocBook</span>{nav.map((item) => <Button key={item} type="text" icon={item.includes("Queue") ? <TeamOutlined /> : item.includes("Notification") ? <BellOutlined /> : <HomeOutlined />}>{item}</Button>)}</aside><div className="dashboard-main"><div className="dashboard-title"><h1>{title}</h1><Tag color="success">Live updates</Tag></div>{children}</div></section>;
 }
 
 function QueueTrackingCard({ appointment, board }: { appointment?: Appointment; board: PublicBoard | null }) {
@@ -661,7 +1098,7 @@ function QueueTable({ appointments, onAppointmentAction }: { appointments: Appoi
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="metric-card"><span>{label}</span><strong>{value}</strong></div>;
+  return <Card className="metric-card" variant="borderless"><Statistic title={label} value={value} /></Card>;
 }
 
 function NotificationRow({ item }: { item: NotificationItem }) {
@@ -680,6 +1117,18 @@ function MobilePatientNav({ setView }: { setView: (view: View) => void }) {
   return <nav className="mobile-bottom-nav"><button onClick={() => setView("patient-dashboard")}>Home</button><button onClick={() => setView("doctors")}>Find</button><button onClick={() => setView("queue")}>Track</button><button onClick={() => setView("patient-dashboard")}>Profile</button></nav>;
 }
 
-function Footer({ setView }: { setView: (view: View) => void }) {
-  return <footer className="footer"><b>DocBook</b><button onClick={() => setView("doctors")}>Find Doctor</button><button onClick={() => setView("queue")}>Current Queue</button><button onClick={() => setView("doctor-login")}>Doctor Desk</button><span>Built for local dispensaries</span></footer>;
+function Footer({ portal, setView }: { portal: Portal; setView: (view: View) => void }) {
+  return (
+    <footer className="footer">
+      <b>DocBook</b>
+      {portal === "patient" && <button onClick={() => setView("doctors")}>Find Doctor</button>}
+      {portal === "patient" && <button onClick={() => setView("queue")}>Current Queue</button>}
+      {portal === "doctor" && <button onClick={() => setView("doctor-login")}>Queue Desk</button>}
+      {portal === "admin" && <button onClick={() => setView("admin-login")}>Admin Desk</button>}
+      {portal === "all" && <a href="/patients">Patient App</a>}
+      {portal === "all" && <a href="/doctors">Doctor App</a>}
+      {portal === "all" && <a href="/admin">Admin</a>}
+      <span>Built for local dispensaries</span>
+    </footer>
+  );
 }

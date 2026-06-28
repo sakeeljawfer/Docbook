@@ -10,6 +10,10 @@ export async function GET(request: Request) {
   const db = await readDb();
   const doctor = db.doctorProfiles.find((item) => item.id === doctorId);
   if (!doctor) return fail("Doctor not found.", 404);
+  const doctorUser = db.users.find((item) => item.id === doctor.userId);
+  if (doctor.verificationStatus !== "approved" || doctor.paymentStatus !== "paid" || doctorUser?.status !== "active") {
+    return fail("This doctor queue is not available.", 403);
+  }
   const today = new Date().toISOString().slice(0, 10);
   const queues = db.queueSessions.filter((item) => item.doctorId === doctorId && item.appointmentDate === today);
   const queue = queues.find((item) => item.status === "running") ?? queues[0];
