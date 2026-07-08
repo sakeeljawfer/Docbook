@@ -25,8 +25,21 @@ async function getMongoClient() {
   if (!uri) {
     throw new Error("MONGODB_URI is required. Add it to your local .env and production environment variables.");
   }
-  mongoClient = new MongoClient(uri, { ignoreUndefined: true });
+  mongoClient = new MongoClient(uri, {
+    ignoreUndefined: true,
+    maxPoolSize: 100,
+    minPoolSize: 10,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 30000,
+    connectTimeoutMS: 10000
+  });
   await mongoClient.connect();
+
+  process.on('SIGINT', async () => {
+    await mongoClient?.close();
+    process.exit(0);
+  });
+
   return mongoClient;
 }
 

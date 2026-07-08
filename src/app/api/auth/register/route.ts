@@ -2,25 +2,28 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { mutateDb } from "@/lib/db";
 import { fail, ok } from "@/lib/http";
+import { rateLimit, createRateLimitError } from "@/lib/rate-limit";
 import type { Role } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 const schema = z.object({
   role: z.enum(["patient", "doctor"]),
-  name: z.string().min(2),
-  phone: z.string().min(7),
+  name: z.string().min(2).max(100),
+  phone: z.string().regex(/^\+?[1-9]\d{1,14}$/),
   email: z.string().email().optional().or(z.literal("")),
-  password: z.string().min(6),
-  confirmPassword: z.string().min(6),
+  password: z.string().min(8).regex(/^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)/),
+  confirmPassword: z.string().min(8),
   clinicName: z.string().optional(),
   specializationId: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
-  consultationFee: z.coerce.number().optional()
+  consultationFee: z.coerce.number().min(0).optional()
 });
 
 export async function POST(request: Request) {
+  if (!(await rateLimit(10, 60000))) return createRateLimitError();
+
   const parsed = schema.safeParse(await request.json());
   if (!parsed.success) return fail("Please check the required fields.");
   const input = parsed.data;

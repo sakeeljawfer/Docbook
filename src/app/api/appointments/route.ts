@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { appointmentView, mutateDb, readDb, notify, recalculateQueue } from "@/lib/db";
 import { fail, ok } from "@/lib/http";
+import { rateLimit, createRateLimitError } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (!(await rateLimit(30, 60000))) return createRateLimitError();
+
   const user = await getCurrentUser("patient");
   if (!user) return fail("Please log in as a patient to book.", 401);
   const { doctorId, sessionId, appointmentDate, reason } = await request.json();
@@ -32,11 +35,14 @@ export async function POST(request: Request) {
     }
     const session = db.doctorSessions.find((item) => item.id === sessionId && item.doctorId === doctorId);
     if (!session) throw new Error("Invalid session.");
+
     const sameDay = db.appointments.filter((item) => item.doctorId === doctorId && item.sessionId === sessionId && item.appointmentDate === appointmentDate);
     if (sameDay.some((item) => item.patientId === user.id && item.status !== "cancelled")) {
       throw new Error("You already have an appointment for this doctor and session.");
     }
-    if (sameDay.filter((item) => item.status !== "cancelled").length >= session.maxPatients) {
+
+    const activeCount = sameDay.filter((item) => item.status !== "cancelled").length;
+    if (activeCount >= session.maxPatients) {
       throw new Error("This session is fully booked.");
     }
     const position = sameDay.length + 1;

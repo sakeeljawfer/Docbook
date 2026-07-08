@@ -8,6 +8,9 @@ const cookieName = "docbook_session";
 function getSessionSecret() {
   const secret = process.env.JWT_SECRET ?? process.env.AUTH_SECRET;
   if (!secret) throw new Error("JWT_SECRET is required for authentication.");
+  if (secret.length < 32) {
+    throw new Error("JWT_SECRET must be at least 32 characters long for security.");
+  }
   return new TextEncoder().encode(secret);
 }
 
